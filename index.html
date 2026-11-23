@@ -1,0 +1,1432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Dr. Tube — Cure Your YouTube Feed</title>
+  <style>
+    :root {
+      /* Raw light/dark palette tokens */
+      --bg-light: #f6f5f2;
+      --bg-dark: #111214;
+      --surface-light: #ffffff;
+      --surface-dark: #1a1c20;
+      --surface-2-light: #efede8;
+      --surface-2-dark: #23262c;
+      --border-light: #e2dfd7;
+      --border-dark: #2c3038;
+      --text-light: #191918;
+      --text-dark: #ecebe8;
+      --muted-light: #63615b;
+      --muted-dark: #989a9f;
+      --accent-light: #c83e2b;
+      --accent-dark: #f06449;
+      --accent-soft-light: #fbeae7;
+      --accent-soft-dark: #351d1a;
+      --badge-bg-light: rgba(17, 18, 20, 0.84);
+      --badge-bg-dark: rgba(10, 11, 13, 0.88);
+
+      --bg: var(--bg-light);
+      --surface: var(--surface-light);
+      --surface-2: var(--surface-2-light);
+      --border: var(--border-light);
+      --text: var(--text-light);
+      --muted: var(--muted-light);
+      --accent: var(--accent-light);
+      --accent-soft: var(--accent-soft-light);
+      --badge-bg: var(--badge-bg-light);
+
+      @media (prefers-color-scheme: dark) {
+        --bg: var(--bg-dark);
+        --surface: var(--surface-dark);
+        --surface-2: var(--surface-2-dark);
+        --border: var(--border-dark);
+        --text: var(--text-dark);
+        --muted: var(--muted-dark);
+        --accent: var(--accent-dark);
+        --accent-soft: var(--accent-soft-dark);
+        --badge-bg: var(--badge-bg-dark);
+      }
+
+      @supports (color: light-dark(white, black)) {
+        --bg: light-dark(var(--bg-light), var(--bg-dark));
+        --surface: light-dark(var(--surface-light), var(--surface-dark));
+        --surface-2: light-dark(var(--surface-2-light), var(--surface-2-dark));
+        --border: light-dark(var(--border-light), var(--border-dark));
+        --text: light-dark(var(--text-light), var(--text-dark));
+        --muted: light-dark(var(--muted-light), var(--muted-dark));
+        --accent: light-dark(var(--accent-light), var(--accent-dark));
+        --accent-soft: light-dark(var(--accent-soft-light), var(--accent-soft-dark));
+        --badge-bg: light-dark(var(--badge-bg-light), var(--badge-bg-dark));
+      }
+
+      color-scheme: light dark;
+      --radius: 12px;
+      --sidebar-w: 270px;
+    }
+
+    html {
+      accent-color: var(--accent);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* Sidebar */
+    aside {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      padding: 18px 14px 28px;
+      height: 100dvh;
+      position: sticky;
+      top: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 6px;
+    }
+
+    .brand h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-cross {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      background: var(--accent);
+      color: #fff;
+      display: inline-grid;
+      place-items: center;
+      font-size: 0.85rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .brand-tag {
+      font-size: 0.7rem;
+      color: var(--muted);
+      background: var(--surface-2);
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+
+    .side-filter {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 7px 10px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    .side-filter:focus {
+      border-color: var(--accent);
+    }
+
+    .side-section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 8px 6px;
+    }
+
+    .quick-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .action-btn {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 9px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .action-btn:hover {
+      border-color: var(--accent);
+    }
+
+    .action-btn.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .cat-group {
+      margin-bottom: 4px;
+    }
+
+    .cat-group summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 7px 8px;
+      border-radius: 8px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+
+    .cat-group summary::-webkit-details-marker { display: none; }
+    .cat-group summary:hover { background: var(--surface-2); }
+    .cat-group summary::after {
+      content: "›";
+      font-size: 1rem;
+      color: var(--muted);
+      transition: transform 0.15s;
+    }
+    .cat-group[open] summary::after { transform: rotate(90deg); }
+
+    .subcat-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 2px 0 6px 10px;
+    }
+
+    .subcat-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+      padding: 6px 8px;
+      border-radius: 7px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    .subcat-btn:hover {
+      background: var(--surface-2);
+      color: var(--text);
+    }
+
+    .subcat-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .tag-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 2px;
+    }
+
+    .tag-pill {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .tag-pill:hover,
+    .tag-pill.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    /* Main Content */
+    main {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .search-form {
+      flex: 1;
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.92rem;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    .primary-btn {
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .primary-btn:hover { opacity: 0.92; }
+
+    .filters-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      font-size: 0.8rem;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--muted);
+    }
+
+    select {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 5px 8px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 6px;
+    }
+
+    /* Status & Header */
+    .content-wrap {
+      padding: 20px 24px 48px;
+    }
+
+    .view-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .view-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+
+    .view-meta {
+      font-size: 0.82rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .view-meta a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .view-meta a:hover { text-decoration: underline; }
+
+    /* Video Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.14s ease, border-color 0.14s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+
+    .thumb-btn {
+      position: relative;
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      padding: 0;
+      border: none;
+      background: var(--surface-2);
+      cursor: pointer;
+      overflow: hidden;
+    }
+
+    .thumb-btn img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .duration-badge {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      background: var(--badge-bg);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .card-body {
+      padding: 12px 13px 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+
+    .card-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.32;
+      margin: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .card-channel {
+      font-size: 0.8rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-footer {
+      margin-top: auto;
+      padding-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .save-mini {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 3px 7px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .save-mini:hover,
+    .save-mini.saved {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 64px 20px;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+
+    /* Distraction-free Theater Modal */
+    dialog:modal {
+      overscroll-behavior: contain;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 0;
+      width: min(980px, 94vw);
+      max-height: 92dvh;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    }
+
+    dialog::backdrop {
+      overflow: hidden;
+      overscroll-behavior: contain;
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-title {
+      font-size: 0.98rem;
+      font-weight: 700;
+      margin: 0;
+      line-height: 1.3;
+    }
+
+    .modal-close {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .player-wrap {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+    }
+
+    .player-wrap iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+
+    .modal-foot {
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .ghost-btn {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .ghost-btn:hover { border-color: var(--accent); }
+
+    @media (max-width: 860px) {
+      body { grid-template-columns: 1fr; }
+      aside {
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+    }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand">
+      <h1><span class="brand-cross" aria-hidden="true">+</span>Dr. Tube</h1>
+      <span class="brand-tag">Rx: No Algo</span>
+    </div>
+
+    <div>
+      <p class="side-section-title">Discovery</p>
+      <div class="quick-actions">
+        <button class="action-btn" id="rouletteBtn" title="Find unedited IMG_XXXX / MVI_XXXX camera uploads">🎲 Raw Roulette</button>
+        <button class="action-btn" id="shuffleBtn" title="Jump to a random category topic">⚡ Surprise Me</button>
+        <button class="action-btn" id="savedBtn" style="grid-column: 1 / -1;">★ Watch Later (<span id="savedCount">0</span>)</button>
+      </div>
+    </div>
+
+    <div>
+      <input
+        type="search"
+        id="sideFilterInput"
+        class="side-filter"
+        placeholder="Filter categories & #tags…"
+        autocomplete="off"
+      >
+    </div>
+
+    <div>
+      <p class="side-section-title">Directory Categories (<span id="catCount">0</span>)</p>
+      <div id="categoryTree"></div>
+    </div>
+
+    <div>
+      <p class="side-section-title">Browse Hashtags (<span id="tagCount">0</span>)</p>
+      <div class="tag-cloud" id="tagCloud"></div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div class="search-row">
+        <form class="search-form" id="searchForm">
+          <input
+            type="search"
+            id="searchInput"
+            class="search-input"
+            placeholder="Browse a topic or type #hashtag (e.g. #shortfilm, japanese joinery, cymatics)..."
+            autocomplete="off"
+          >
+          <button type="submit" class="primary-btn">Browse</button>
+        </form>
+      </div>
+
+      <div class="filters-row">
+        <label class="filter-group">
+          Sort
+          <select id="sortSelect">
+            <option value="relevance">Relevance</option>
+            <option value="date">Newest First</option>
+            <option value="views">Most Viewed</option>
+          </select>
+        </label>
+
+        <label class="filter-group">
+          Length
+          <select id="durationSelect">
+            <option value="any">Any length</option>
+            <option value="short">Under 4 min</option>
+            <option value="medium">4–20 min</option>
+            <option value="long">20+ min deep dives</option>
+          </select>
+        </label>
+
+        <label class="filter-group">
+          Era
+          <select id="eraSelect">
+            <option value="any">Any time</option>
+            <option value="week">Past week</option>
+            <option value="month">Past month</option>
+            <option value="2006-2011">2006–2011 (Golden Era)</option>
+            <option value="2012-2016">2012–2016</option>
+            <option value="2017-2020">2017–2020</option>
+          </select>
+        </label>
+
+        <label class="filter-group">
+          Hidden Gems
+          <select id="maxViewsSelect">
+            <option value="0">Any view count</option>
+            <option value="100000">Under 100K views</option>
+            <option value="25000">Under 25K views</option>
+            <option value="5000">Under 5K views</option>
+            <option value="1000">Under 1K views</option>
+          </select>
+        </label>
+
+        <label class="checkbox-label">
+          <input type="checkbox" id="hideShortsCheck" checked>
+          Hide Shorts
+        </label>
+      </div>
+    </header>
+
+    <section class="content-wrap">
+      <div class="view-header">
+        <h2 class="view-title" id="viewTitle">Loading directory…</h2>
+        <div class="view-meta">
+          <span id="resultCount"></span>
+          <a id="openSourceLink" href="#" target="_blank" rel="noopener noreferrer" hidden>Open on YouTube ↗</a>
+        </div>
+      </div>
+      <div class="grid" id="videoGrid"></div>
+    </section>
+  </main>
+
+  <dialog id="playerDialog" closedby="any" aria-labelledby="dialogTitle">
+    <div class="modal-head">
+      <h3 class="modal-title" id="dialogTitle">Video</h3>
+      <button type="button" class="modal-close" id="closeDialogBtn" aria-label="Close player">×</button>
+    </div>
+    <div class="player-wrap">
+      <iframe
+        id="playerFrame"
+        title="YouTube video player"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        allowfullscreen
+      ></iframe>
+    </div>
+    <div class="modal-foot">
+      <div id="dialogMeta"></div>
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="dialogSaveBtn">★ Save</button>
+        <a class="ghost-btn" id="dialogYtLink" href="#" target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    const CATEGORIES = [
+      {
+        name: 'Film, Animation & Cinema',
+        open: true,
+        items: [
+          'independent short film',
+          'stop motion animation',
+          'student film award',
+          'surreal animation',
+          'classic 16mm film',
+          'cinematography video essay',
+          'claymation short',
+          'experimental cinema',
+        ],
+      },
+      {
+        name: 'Craft, Wood & Making',
+        items: [
+          'japanese wood joinery',
+          'miniature diorama build',
+          'traditional blacksmithing',
+          'luthier guitar build',
+          'pottery wheel throwing',
+          'leathercraft hand stitched',
+          'glassblowing studio',
+          'hand bookbinding',
+        ],
+      },
+      {
+        name: 'Restoration & Repair',
+        items: [
+          'watch restoration',
+          'antique tool restoration',
+          'vintage camera repair',
+          'rust restoration no talking',
+          'painting conservation restoration',
+          'arcade cabinet restoration',
+          'mechanical clock repair',
+        ],
+      },
+      {
+        name: 'Science, Math & Physics',
+        items: [
+          'cymatics physics',
+          'microscopy pond water',
+          'high speed camera physics',
+          'astronomy timelapse',
+          'weird math visual',
+          'fluid dynamics experiment',
+          'chemistry crystallization',
+          'optics laser experiment',
+        ],
+      },
+      {
+        name: 'Engineering & Factories',
+        items: [
+          'factory manufacturing process',
+          'mechanical linkages animation',
+          'jet engine engineering',
+          'bridge construction timelapse',
+          'horology watchmaking',
+          'cnc machining satisfying',
+          'semiconductor fabrication',
+        ],
+      },
+      {
+        name: 'Retro Tech & Hardware',
+        items: [
+          'segmented displays',
+          'vintage synthesizer demo',
+          'mechanical calculator',
+          'retro computing restoration',
+          'crt monitor engineering',
+          'vintage hifi audio',
+          'obscure game consoles',
+          'old computer commercials',
+        ],
+      },
+      {
+        name: 'Obscure History & Rabbit Holes',
+        items: [
+          'forgotten history documentary',
+          'defunct technology documentary',
+          'archival footage 1970s',
+          'bizarre true story documentary',
+          'lost media documentary',
+          'ancient engineering mysteries',
+          'historical cooking recipes',
+          'cold war bunkers',
+        ],
+      },
+      {
+        name: 'Music & Sound Oddities',
+        items: [
+          'unusual musical instruments',
+          'field recording ambient',
+          'modular synthesizer jam',
+          'microtonal music',
+          'marble machine music',
+          'foley sound design',
+          'hurdy gurdy music',
+          'theremin performance',
+          'vinyl record digging',
+        ],
+      },
+      {
+        name: 'Comedy, Satire & Absurd',
+        items: [
+          'deadpan comedy sketch',
+          'absurd short comedy',
+          'weird internet classic',
+          'dry british satire',
+          'surreal sketch comedy',
+          'mockumentary short',
+          'vintage comedy routine',
+        ],
+      },
+      {
+        name: 'Visual Art & Printmaking',
+        items: [
+          'linocut printmaking',
+          'traditional calligraphy',
+          'kinetic sculpture',
+          'generative art coding',
+          'oil painting timelapse',
+          'sumi-e ink wash painting',
+          'comic book inking',
+          'neon sign glass bending',
+        ],
+      },
+      {
+        name: 'Architecture & Urbanism',
+        items: [
+          'brutalist architecture documentary',
+          'tiny house tour japan',
+          'urban planning transit',
+          'abandoned places exploration',
+          'cathedral architecture history',
+          'mid century modern home',
+          'underground cities documentary',
+        ],
+      },
+      {
+        name: 'Food, Craft & Street Food',
+        items: [
+          'japanese street food no talking',
+          'sourdough fermentation science',
+          'traditional ramen making',
+          'medieval historical cooking',
+          'artisan cheese making',
+          'night market street food',
+          'traditional tea ceremony',
+        ],
+      },
+      {
+        name: 'Nature, Wildlife & Deep Sea',
+        items: [
+          'deep sea rov exploration',
+          'macro insect documentary',
+          'volcano eruption footage',
+          'bioluminescence ocean',
+          'time lapse mushrooms growing',
+          'antarctica expedition documentary',
+          'rare birds wildlife',
+        ],
+      },
+      {
+        name: 'Space & Aviation',
+        items: [
+          'apollo mission archival footage',
+          'cockpit view landing',
+          'rocket launch slow motion',
+          'james webb telescope zoom',
+          'vintage aircraft restoration',
+          'international space station tour',
+        ],
+      },
+      {
+        name: 'Slow TV & Ambient Walks',
+        items: [
+          'cab view train journey',
+          'walking rain tokyo ambient',
+          'alpine drone flight no talking',
+          'ship crossing storm north sea',
+          'snowy forest walk binaural',
+          'night drive rain city',
+          'rainy cabin ambience',
+        ],
+      },
+      {
+        name: 'Games, Speedruns & Design',
+        items: [
+          'speedrun world record history',
+          'retro game development',
+          'board game design',
+          'arcade cabinet history',
+          'video game music analysis',
+          'obscure indie games',
+          'procedural generation games',
+        ],
+      },
+      {
+        name: 'Analog & Photography',
+        items: [
+          'darkroom film developing',
+          'large format photography',
+          'street photography pov',
+          'vintage lens comparison',
+          'pinhole camera build',
+          'cyanotype printing',
+        ],
+      },
+      {
+        name: 'Essays, Mind & Culture',
+        items: [
+          'philosophy video essay',
+          'linguistics etymology',
+          'cognitive bias psychology',
+          'internet culture documentary',
+          'design history documentary',
+          'typography documentary',
+        ],
+      },
+      {
+        name: 'Bushcraft & Expeditions',
+        items: [
+          'cabin build in woods',
+          'solo camping rain',
+          'sailing across ocean',
+          'bikepacking expedition',
+          'traditional canoe building',
+          'foraging wild mushrooms',
+        ],
+      },
+      {
+        name: 'Weird Sports & Skill',
+        items: [
+          'weird sports history',
+          'sumo wrestling explained',
+          'marble racing championship',
+          'competitive origami',
+          'traditional archery',
+          'kendama freestyle',
+        ],
+      },
+      {
+        name: 'Vintage TV & Archives',
+        items: [
+          '1980s japanese commercials',
+          'public access tv archive',
+          'vintage educational film',
+          'retro weather channel',
+          '1960s world fair footage',
+          'vintage synth infomercial',
+        ],
+      },
+      {
+        name: 'DIY Electronics & Robotics',
+        items: [
+          'weird arduino project',
+          'homemade robot build',
+          'tesla coil music',
+          'nixie tube clock build',
+          'cyberdeck build',
+          'homebrew cpu project',
+        ],
+      },
+    ];
+
+    const HASHTAGS = [
+      // Film & Art
+      'shortfilm', 'stopmotion', 'claymation', 'indiefilm', 'animation', '16mm', 'super8',
+      'printmaking', 'linocut', 'calligraphy', 'oilpainting', 'inktober', 'sketchbook', 'sculpture',
+      'kineticart', 'generativeart', 'pixelart', 'comicart', 'storyboard',
+      // Craft & Restoration
+      'woodworking', 'joinery', 'blacksmithing', 'pottery', 'ceramics', 'leathercraft',
+      'bookbinding', 'glassblowing', 'miniatures', 'diorama', 'origami', 'luthier',
+      'restoration', 'watchmaking', 'horology', 'machining', 'metalworking', 'diy',
+      // Retro Tech & Electronics
+      'retrotech', 'retrocomputing', 'vintageelectronics', 'crt', 'cassette', 'vhs',
+      'synth', 'modularsynth', 'synthesizer', 'arduino', 'robotics', 'cyberdeck', 'nixie', '3dprinting',
+      // Science, Space & Nature
+      'cymatics', 'physics', 'microscopy', 'chemistry', 'astronomy', 'astrophotography',
+      'deepsea', 'timelapse', 'slowmotion', 'macro', 'wildlife', 'mycology', 'geology', 'volcano',
+      // Music & Sound
+      'fieldrecording', 'ambient', 'foley', 'sounddesign', 'vinyl', 'microtonal', 'acoustic', 'lofi',
+      // History, Docs & Culture
+      'documentary', 'archival', 'vintage', 'lostmedia', 'history', 'videoessay', 'urbanism',
+      'brutalism', 'architecture', 'abandoned', 'typography', 'analog', 'filmphotography', 'darkroom',
+      // Food, Slow TV & Outdoors
+      'streetfood', 'sourdough', 'fermentation', 'bushcraft', 'solocamping', 'cabview', 'slowtv', 'oddlysatisfying',
+    ];
+
+    const state = {
+      query: 'independent short film',
+      mode: 'search', // 'search' | 'hashtag' | 'roulette' | 'saved'
+      videos: [],
+      activeVideo: null,
+    };
+
+    const els = {
+      sideFilterInput: document.getElementById('sideFilterInput'),
+      catCount: document.getElementById('catCount'),
+      tagCount: document.getElementById('tagCount'),
+      categoryTree: document.getElementById('categoryTree'),
+      tagCloud: document.getElementById('tagCloud'),
+      searchForm: document.getElementById('searchForm'),
+      searchInput: document.getElementById('searchInput'),
+      sortSelect: document.getElementById('sortSelect'),
+      durationSelect: document.getElementById('durationSelect'),
+      eraSelect: document.getElementById('eraSelect'),
+      maxViewsSelect: document.getElementById('maxViewsSelect'),
+      hideShortsCheck: document.getElementById('hideShortsCheck'),
+      viewTitle: document.getElementById('viewTitle'),
+      resultCount: document.getElementById('resultCount'),
+      openSourceLink: document.getElementById('openSourceLink'),
+      videoGrid: document.getElementById('videoGrid'),
+      rouletteBtn: document.getElementById('rouletteBtn'),
+      shuffleBtn: document.getElementById('shuffleBtn'),
+      savedBtn: document.getElementById('savedBtn'),
+      savedCount: document.getElementById('savedCount'),
+      dialog: document.getElementById('playerDialog'),
+      closeDialogBtn: document.getElementById('closeDialogBtn'),
+      dialogTitle: document.getElementById('dialogTitle'),
+      dialogMeta: document.getElementById('dialogMeta'),
+      dialogSaveBtn: document.getElementById('dialogSaveBtn'),
+      dialogYtLink: document.getElementById('dialogYtLink'),
+      playerFrame: document.getElementById('playerFrame'),
+    };
+
+    // Watch Later persistence
+    function getSaved() {
+      try {
+        return JSON.parse(localStorage.getItem('tubedir_saved') || '[]');
+      } catch {
+        return [];
+      }
+    }
+
+    function setSaved(list) {
+      localStorage.setItem('tubedir_saved', JSON.stringify(list));
+      els.savedCount.textContent = String(list.length);
+    }
+
+    function isSaved(id) {
+      return getSaved().some((v) => v.id === id);
+    }
+
+    function toggleSave(video) {
+      const list = getSaved();
+      const idx = list.findIndex((v) => v.id === video.id);
+      if (idx >= 0) list.splice(idx, 1);
+      else list.unshift(video);
+      setSaved(list);
+      if (state.mode === 'saved') renderSaved();
+      else renderGrid(state.videos);
+      if (state.activeVideo && state.activeVideo.id === video.id) {
+        updateDialogSaveBtn(video.id);
+      }
+    }
+
+    function updateDialogSaveBtn(id) {
+      els.dialogSaveBtn.textContent = isSaved(id) ? '★ Saved' : '☆ Save';
+    }
+
+    // Build sidebar (with optional live filter)
+    function buildSidebar(filterText = '') {
+      const q = filterText.trim().toLowerCase().replace(/^#/, '');
+      els.categoryTree.innerHTML = '';
+      let visibleTopicCount = 0;
+
+      for (const cat of CATEGORIES) {
+        const catMatches = !q || cat.name.toLowerCase().includes(q);
+        const matchingItems = catMatches
+          ? cat.items
+          : cat.items.filter((t) => t.toLowerCase().includes(q));
+        if (!matchingItems.length) continue;
+
+        visibleTopicCount += matchingItems.length;
+        const details = document.createElement('details');
+        details.className = 'cat-group';
+        if (q || cat.open) details.open = true;
+
+        const summary = document.createElement('summary');
+        summary.textContent = cat.name;
+        details.appendChild(summary);
+
+        const list = document.createElement('div');
+        list.className = 'subcat-list';
+        for (const topic of matchingItems) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'subcat-btn';
+          btn.dataset.topic = topic;
+          btn.textContent = topic;
+          btn.addEventListener('click', () => {
+            state.mode = 'search';
+            state.query = topic;
+            els.searchInput.value = topic;
+            loadBrowse();
+          });
+          list.appendChild(btn);
+        }
+        details.appendChild(list);
+        els.categoryTree.appendChild(details);
+      }
+
+      els.catCount.textContent = String(visibleTopicCount);
+
+      els.tagCloud.innerHTML = '';
+      const matchingTags = q
+        ? HASHTAGS.filter((t) => t.toLowerCase().includes(q))
+        : HASHTAGS;
+      els.tagCount.textContent = String(matchingTags.length);
+
+      for (const tag of matchingTags) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tag-pill';
+        btn.dataset.tag = tag;
+        btn.textContent = `#${tag}`;
+        btn.addEventListener('click', () => {
+          state.mode = 'hashtag';
+          state.query = tag;
+          els.searchInput.value = `#${tag}`;
+          loadBrowse();
+        });
+        els.tagCloud.appendChild(btn);
+      }
+
+      updateActiveNav();
+    }
+
+    els.sideFilterInput.addEventListener('input', (e) => {
+      buildSidebar(e.target.value);
+    });
+
+    function updateActiveNav() {
+      document.querySelectorAll('.subcat-btn').forEach((b) => {
+        b.classList.toggle('active', state.mode === 'search' && b.dataset.topic === state.query);
+      });
+      document.querySelectorAll('.tag-pill').forEach((b) => {
+        b.classList.toggle('active', state.mode === 'hashtag' && b.dataset.tag === state.query.replace(/^#/, ''));
+      });
+      els.rouletteBtn.classList.toggle('active', state.mode === 'roulette');
+      els.savedBtn.classList.toggle('active', state.mode === 'saved');
+    }
+
+    async function loadBrowse() {
+      updateActiveNav();
+      const label = state.mode === 'hashtag' ? `#${state.query.replace(/^#/, '')}` : state.query;
+      els.viewTitle.textContent = label;
+      els.resultCount.textContent = 'Fetching…';
+      els.openSourceLink.hidden = true;
+      els.videoGrid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Scanning YouTube directory (no algorithm)…</div>';
+
+      const params = new URLSearchParams({
+        q: state.query,
+        mode: state.mode,
+        sort: els.sortSelect.value,
+        duration: els.durationSelect.value,
+        era: els.eraSelect.value,
+        maxViews: els.maxViewsSelect.value,
+        hideShorts: String(els.hideShortsCheck.checked),
+      });
+
+      try {
+        const res = await fetch(`/api/browse?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load');
+
+        state.videos = data.videos || [];
+        els.resultCount.textContent = `${state.videos.length} videos`;
+        if (data.sourceUrl) {
+          els.openSourceLink.href = data.sourceUrl;
+          els.openSourceLink.hidden = false;
+        }
+        renderGrid(state.videos);
+      } catch (err) {
+        els.resultCount.textContent = '';
+        els.videoGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Couldn't load videos: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function loadRoulette() {
+      state.mode = 'roulette';
+      updateActiveNav();
+      els.viewTitle.textContent = '🎲 Raw Upload Roulette';
+      els.resultCount.textContent = 'Rolling camera filename…';
+      els.openSourceLink.hidden = true;
+      els.videoGrid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Searching for unedited raw camera uploads…</div>';
+
+      try {
+        const res = await fetch(`/api/roulette?hideShorts=${els.hideShortsCheck.checked}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to roll');
+
+        state.query = data.query;
+        state.videos = data.videos || [];
+        els.searchInput.value = data.query;
+        els.viewTitle.textContent = `🎲 Raw Upload Roulette — "${data.query}"`;
+        els.resultCount.textContent = `${state.videos.length} raw uploads`;
+        renderGrid(state.videos);
+      } catch (err) {
+        els.videoGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Roulette error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderSaved() {
+      state.mode = 'saved';
+      updateActiveNav();
+      const saved = getSaved();
+      state.videos = saved;
+      els.viewTitle.textContent = '★ Watch Later (Local)';
+      els.resultCount.textContent = `${saved.length} saved`;
+      els.openSourceLink.hidden = true;
+      renderGrid(saved, 'No saved videos yet. Click "Save" on any video card to build a local watchlist.');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function renderGrid(videos, emptyMsg = 'No videos matched those filters. Try widening the view count or era filter.') {
+      if (!videos.length) {
+        els.videoGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">${escapeHtml(emptyMsg)}</div>`;
+        return;
+      }
+
+      els.videoGrid.innerHTML = '';
+      for (const v of videos) {
+        const card = document.createElement('article');
+        card.className = 'card';
+
+        const thumbBtn = document.createElement('button');
+        thumbBtn.type = 'button';
+        thumbBtn.className = 'thumb-btn';
+        thumbBtn.setAttribute('aria-label', `Play ${v.title}`);
+        thumbBtn.addEventListener('click', () => openPlayer(v));
+
+        const img = document.createElement('img');
+        img.src = v.thumbnail;
+        img.alt = v.title;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        thumbBtn.appendChild(img);
+
+        if (v.duration) {
+          const badge = document.createElement('span');
+          badge.className = 'duration-badge';
+          badge.textContent = v.duration;
+          thumbBtn.appendChild(badge);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'card-body';
+
+        const title = document.createElement('h3');
+        title.className = 'card-title';
+        title.textContent = v.title;
+        title.addEventListener('click', () => openPlayer(v));
+
+        const channel = document.createElement('div');
+        channel.className = 'card-channel';
+        channel.textContent = v.channel;
+
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+
+        const stats = document.createElement('span');
+        stats.textContent = [v.views, v.published].filter(Boolean).join(' · ');
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        const saved = isSaved(v.id);
+        saveBtn.className = `save-mini${saved ? ' saved' : ''}`;
+        saveBtn.textContent = saved ? '★ Saved' : '☆ Save';
+        saveBtn.addEventListener('click', () => toggleSave(v));
+
+        footer.append(stats, saveBtn);
+        body.append(title, channel, footer);
+        card.append(thumbBtn, body);
+        els.videoGrid.appendChild(card);
+      }
+    }
+
+    function openPlayer(video) {
+      state.activeVideo = video;
+      els.dialogTitle.textContent = video.title;
+      els.dialogMeta.textContent = [video.channel, video.views, video.published].filter(Boolean).join(' · ');
+      els.dialogYtLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(video.id)}`;
+      updateDialogSaveBtn(video.id);
+      els.playerFrame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(video.id)}?autoplay=1&rel=0`;
+      els.dialog.showModal();
+    }
+
+    // Stop playback cleanly on dialog close (whether Esc, backdrop, or close button)
+    els.dialog.addEventListener('close', () => {
+      els.playerFrame.src = 'about:blank';
+      state.activeVideo = null;
+    });
+
+    els.closeDialogBtn.addEventListener('click', () => els.dialog.close());
+    els.dialogSaveBtn.addEventListener('click', () => {
+      if (state.activeVideo) toggleSave(state.activeVideo);
+    });
+
+    // Mandatory fallback for browsers without <dialog closedby="any"> support (e.g. Safari)
+    if (!('closedBy' in HTMLDialogElement.prototype)) {
+      els.dialog.addEventListener('click', (event) => {
+        if (event.target !== els.dialog) return;
+        const rect = els.dialog.getBoundingClientRect();
+        const isDialogContent =
+          rect.top <= event.clientY &&
+          event.clientY <= rect.top + rect.height &&
+          rect.left <= event.clientX &&
+          event.clientX <= rect.left + rect.width;
+        if (isDialogContent) return;
+        els.dialog.close();
+      });
+    }
+
+    // Event wiring
+    els.searchForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const raw = els.searchInput.value.trim();
+      if (!raw) return;
+      if (raw.startsWith('#')) {
+        state.mode = 'hashtag';
+        state.query = raw.slice(1);
+      } else {
+        state.mode = 'search';
+        state.query = raw;
+      }
+      loadBrowse();
+    });
+
+    for (const ctrl of [els.sortSelect, els.durationSelect, els.eraSelect, els.maxViewsSelect, els.hideShortsCheck]) {
+      ctrl.addEventListener('change', () => {
+        if (state.mode === 'saved') return;
+        if (state.mode === 'roulette') loadRoulette();
+        else loadBrowse();
+      });
+    }
+
+    els.rouletteBtn.addEventListener('click', loadRoulette);
+    els.savedBtn.addEventListener('click', renderSaved);
+    els.shuffleBtn.addEventListener('click', () => {
+      const allTopics = CATEGORIES.flatMap((c) => c.items);
+      const pick = allTopics[Math.floor(Math.random() * allTopics.length)];
+      state.mode = 'search';
+      state.query = pick;
+      els.searchInput.value = pick;
+      loadBrowse();
+    });
+
+    // Init
+    setSaved(getSaved());
+    buildSidebar();
+    els.searchInput.value = state.query;
+    loadBrowse();
+  </script>
+</body>
+</html>
