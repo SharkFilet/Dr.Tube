@@ -74,6 +74,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     body {
       margin: 0;
@@ -516,13 +517,69 @@
 
     .empty-state {
       text-align: center;
-      padding: 64px 20px;
+      padding: 48px 20px;
       color: var(--muted);
       border: 1px dashed var(--border);
       border-radius: var(--radius);
     }
 
-    /* Distraction-free Theater Modal */
+    .fallback-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .side-footer {
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mode-btn {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 9px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      text-align: left;
+    }
+
+    .mode-btn:hover { border-color: var(--accent); }
+
+    .mode-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mode-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #2f9e44;
+      flex-shrink: 0;
+    }
+
+    .mode-dot.is-warn { background: var(--accent); }
+
+    /* Distraction-free Theater & Settings Modals */
     dialog:modal {
       overscroll-behavior: contain;
       border: 1px solid var(--border);
@@ -533,6 +590,10 @@
       width: min(980px, 94vw);
       max-height: 92dvh;
       box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    }
+
+    #settingsDialog:modal {
+      width: min(560px, 94vw);
     }
 
     dialog::backdrop {
@@ -568,6 +629,58 @@
       font-size: 1.1rem;
       cursor: pointer;
       flex-shrink: 0;
+    }
+
+    .settings-body {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
+    .settings-card {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .settings-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+
+    .settings-field input,
+    .settings-field select {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+    }
+
+    .settings-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .muted-note {
+      color: var(--muted);
+      font-size: 0.79rem;
+      margin: 0;
+      overflow-wrap: anywhere;
     }
 
     .player-wrap {
@@ -659,6 +772,16 @@
       <p class="side-section-title">Browse Hashtags (<span id="tagCount">0</span>)</p>
       <div class="tag-cloud" id="tagCloud"></div>
     </div>
+
+    <div class="side-footer">
+      <button type="button" class="mode-btn" id="settingsBtn" aria-haspopup="dialog">
+        <span class="mode-pill">
+          <span class="mode-dot" id="modeDot" aria-hidden="true"></span>
+          <span id="modeLabel">Checking source…</span>
+        </span>
+        <span aria-hidden="true">⚙</span>
+      </button>
+    </div>
   </aside>
 
   <main>
@@ -740,7 +863,7 @@
 
   <dialog id="playerDialog" closedby="any" aria-labelledby="dialogTitle">
     <div class="modal-head">
-      <h3 class="modal-title" id="dialogTitle">Video</h3>
+      <h1 class="modal-title" id="dialogTitle">Video</h1>
       <button type="button" class="modal-close" id="closeDialogBtn" aria-label="Close player">×</button>
     </div>
     <div class="player-wrap">
@@ -757,6 +880,54 @@
         <button type="button" class="ghost-btn" id="dialogSaveBtn">★ Save</button>
         <a class="ghost-btn" id="dialogYtLink" href="#" target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a>
       </div>
+    </div>
+  </dialog>
+
+  <dialog id="settingsDialog" closedby="any" aria-labelledby="settingsDialogTitle">
+    <div class="modal-head">
+      <h1 class="modal-title" id="settingsDialogTitle">Dr. Tube — Runtime &amp; Deploy</h1>
+      <form method="dialog">
+        <button type="submit" class="modal-close" autofocus aria-label="Close runtime settings">×</button>
+      </form>
+    </div>
+    <div class="settings-body">
+      <div class="settings-card">
+        <strong id="settingsStatusTitle">Browser Serverless Mode</strong>
+        <p class="muted-note" id="settingsStatusDetail">
+          Runs cleanly as standalone HTML with zero cloning, zero server setup, and zero exposure of the repo author's network or ports.
+        </p>
+      </div>
+
+      <label class="settings-field">
+        Data Source Mode
+        <select id="backendModeSelect">
+          <option value="auto">Auto (Local Node Server if available → Serverless Public Mirrors)</option>
+          <option value="piped-ducks">Piped Mirror (pipedapi.ducks.party)</option>
+          <option value="piped-coffee">Piped Mirror (api.piped.private.coffee)</option>
+          <option value="invidious-choco">Invidious Mirror (yt.chocolatemoo53.com)</option>
+          <option value="custom">Custom Piped / Invidious / Worker URL</option>
+        </select>
+      </label>
+
+      <label class="settings-field" id="customApiWrap" hidden>
+        Custom Endpoint Base URL (saved strictly in local browser storage)
+        <input
+          type="url"
+          id="customApiInput"
+          placeholder="https://your-instance.example"
+          autocomplete="off"
+        >
+      </label>
+
+      <div class="settings-actions">
+        <button type="button" class="primary-btn" id="saveSettingsBtn">Save &amp; Reload</button>
+        <a class="ghost-btn" href="index.html" download="dr-tube.html">Download Standalone HTML ↓</a>
+        <a class="ghost-btn" href="https://github.com/SharkFilet/Dr.Tube" target="_blank" rel="noopener noreferrer">GitHub Repo ↗</a>
+      </div>
+
+      <p class="muted-note">
+        Public community instances can occasionally throttle upstream requests; if one slows down, Auto mode fails over automatically or lets you open the exact filter query directly on YouTube. Watch Later saves remain local to your browser.
+      </p>
     </div>
   </dialog>
 
@@ -1059,7 +1230,19 @@
       mode: 'search', // 'search' | 'hashtag' | 'roulette' | 'saved'
       videos: [],
       activeVideo: null,
+      activeBackendLabel: '',
+      localApiUnavailable: false,
     };
+
+    const REMOTE_BACKENDS = [
+      { id: 'piped-ducks', type: 'piped', base: 'https://pipedapi.ducks.party', label: 'pipedapi.ducks.party' },
+      { id: 'piped-coffee', type: 'piped', base: 'https://api.piped.private.coffee', label: 'api.piped.private.coffee' },
+      { id: 'invidious-choco', type: 'invidious', base: 'https://yt.chocolatemoo53.com', label: 'yt.chocolatemoo53.com' },
+    ];
+
+    const RAW_PREFIXES = ['IMG_', 'DSC_', 'MVI_', 'MOV_', 'VID_', '100_', 'CLIP', 'PICT'];
+    const STATIC_CACHE_TTL_MS = 5 * 60 * 1000;
+    const staticCache = new Map();
 
     const els = {
       sideFilterInput: document.getElementById('sideFilterInput'),
@@ -1089,6 +1272,16 @@
       dialogSaveBtn: document.getElementById('dialogSaveBtn'),
       dialogYtLink: document.getElementById('dialogYtLink'),
       playerFrame: document.getElementById('playerFrame'),
+      settingsBtn: document.getElementById('settingsBtn'),
+      modeDot: document.getElementById('modeDot'),
+      modeLabel: document.getElementById('modeLabel'),
+      settingsDialog: document.getElementById('settingsDialog'),
+      settingsStatusTitle: document.getElementById('settingsStatusTitle'),
+      settingsStatusDetail: document.getElementById('settingsStatusDetail'),
+      backendModeSelect: document.getElementById('backendModeSelect'),
+      customApiWrap: document.getElementById('customApiWrap'),
+      customApiInput: document.getElementById('customApiInput'),
+      saveSettingsBtn: document.getElementById('saveSettingsBtn'),
     };
 
     // Watch Later persistence
@@ -1209,40 +1402,391 @@
       els.savedBtn.classList.toggle('active', state.mode === 'saved');
     }
 
+    function updateModeUI(statusText, isWarning = false, detailText = '') {
+      els.modeLabel.textContent = statusText;
+      els.modeDot.classList.toggle('is-warn', isWarning);
+      els.settingsStatusTitle.textContent = statusText;
+      if (detailText) els.settingsStatusDetail.textContent = detailText;
+    }
+
+    function getBackendPrefs() {
+      return {
+        mode: localStorage.getItem('tubedir_backend_mode') || 'auto',
+        customUrl: (localStorage.getItem('tubedir_custom_api') || '').trim().replace(/\/+$/, ''),
+      };
+    }
+
+    function buildSpParam({ sort = 'relevance', duration = 'any', uploaded = 'any' }) {
+      const bytes = [];
+      const sortMap = { relevance: 0, rating: 1, date: 2, views: 3 };
+      const s = sortMap[sort] ?? 0;
+      if (s > 0) bytes.push(0x08, s);
+
+      const filterBytes = [];
+      const uploadMap = { hour: 1, today: 2, week: 3, month: 4, year: 5 };
+      if (uploadMap[uploaded]) filterBytes.push(0x08, uploadMap[uploaded]);
+      filterBytes.push(0x10, 0x01); // videos only
+
+      const durMap = { short: 1, long: 2, medium: 3 };
+      if (durMap[duration]) filterBytes.push(0x18, durMap[duration]);
+
+      if (filterBytes.length > 0) bytes.push(0x12, filterBytes.length, ...filterBytes);
+      if (!bytes.length) return '';
+      return btoa(String.fromCharCode(...bytes));
+    }
+
+    function randomRawQuery() {
+      const prefix = RAW_PREFIXES[Math.floor(Math.random() * RAW_PREFIXES.length)];
+      const digits = String(Math.floor(Math.random() * 9000) + 1000);
+      return `${prefix}${digits}`;
+    }
+
+    function buildYouTubeSearchUrl(queryStr, spOpts = {}) {
+      const sp = buildSpParam(spOpts);
+      return `https://www.youtube.com/results?search_query=${encodeURIComponent(queryStr)}${sp ? `&sp=${encodeURIComponent(sp)}` : ''}`;
+    }
+
+    function extractSafeVideoId(raw) {
+      if (!raw) return '';
+      const str = String(raw).trim();
+      if (/^[A-Za-z0-9_-]{6,20}$/.test(str)) return str;
+      const m = str.match(/(?:[?&]v=|\/shorts\/|\/watch\/|youtu\.be\/)([A-Za-z0-9_-]{6,20})/);
+      return m ? m[1] : '';
+    }
+
+    function formatDuration(sec) {
+      if (typeof sec !== 'number' || !Number.isFinite(sec) || sec <= 0) return '';
+      const total = Math.round(sec);
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      const pad = (n) => String(n).padStart(2, '0');
+      return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+    }
+
+    function formatViews(num) {
+      if (typeof num !== 'number' || !Number.isFinite(num) || num < 0) return '';
+      if (num === 0) return 'No views';
+      if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B views`;
+      if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1).replace(/\.0$/, '')}M views`;
+      if (num >= 1_000) return `${(num / 1_000).toFixed(1).replace(/\.0$/, '')}K views`;
+      return `${num.toLocaleString()} views`;
+    }
+
+    function getStaticCached(key) {
+      const entry = staticCache.get(key);
+      if (!entry) return null;
+      if (Date.now() - entry.ts > STATIC_CACHE_TTL_MS) {
+        staticCache.delete(key);
+        return null;
+      }
+      return entry.val;
+    }
+
+    function setStaticCached(key, val) {
+      if (staticCache.size > 100) {
+        staticCache.delete(staticCache.keys().next().value);
+      }
+      staticCache.set(key, { ts: Date.now(), val });
+    }
+
+    async function fetchJsonWithTimeout(url, timeoutMs = 8500) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        const ct = res.headers.get('content-type') || '';
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!ct.includes('json') && !ct.includes('text/plain')) {
+          const preview = await res.text();
+          return JSON.parse(preview);
+        }
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function normalizeRemotePayload(payload) {
+      // Handles Piped ({ items }), Invidious (Array), or self-hosted Dr. Tube ({ videos })
+      if (Array.isArray(payload)) {
+        return payload
+          .filter((item) => item && (!item.type || item.type === 'video'))
+          .map((item) => {
+            const id = extractSafeVideoId(item.videoId || item.id);
+            if (!id || !item.title) return null;
+            const durationSeconds = typeof item.lengthSeconds === 'number' && item.lengthSeconds > 0 ? item.lengthSeconds : null;
+            const viewCount = typeof item.viewCount === 'number' && item.viewCount >= 0 ? item.viewCount : null;
+            const title = String(item.title);
+            const isShort = Boolean((durationSeconds !== null && durationSeconds <= 61 && title.toLowerCase().includes('#shorts')));
+            return {
+              id,
+              title,
+              channel: String(item.author || 'Unknown channel'),
+              views: String(item.viewCountText || formatViews(viewCount)),
+              viewCount,
+              published: String(item.publishedText || ''),
+              uploadedTs: typeof item.published === 'number' && item.published > 0 ? item.published * 1000 : null,
+              duration: formatDuration(durationSeconds) || (isShort ? 'SHORTS' : ''),
+              durationSeconds,
+              isShort,
+              thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+            };
+          })
+          .filter(Boolean);
+      }
+
+      if (payload && Array.isArray(payload.videos)) {
+        return payload.videos.filter((v) => v && extractSafeVideoId(v.id) && v.title);
+      }
+
+      if (payload && Array.isArray(payload.items)) {
+        return payload.items
+          .filter((item) => item && (!item.type || item.type === 'stream'))
+          .map((item) => {
+            const id = extractSafeVideoId(item.url || item.videoId || item.id);
+            if (!id || !item.title) return null;
+            const durationSeconds = typeof item.duration === 'number' && item.duration > 0 ? item.duration : null;
+            const viewCount = typeof item.views === 'number' && item.views >= 0 ? item.views : null;
+            const title = String(item.title);
+            const isShort = Boolean(
+              item.isShort ||
+              (item.url || '').includes('/shorts/') ||
+              (durationSeconds !== null && durationSeconds <= 61 && title.toLowerCase().includes('#shorts'))
+            );
+            return {
+              id,
+              title,
+              channel: String(item.uploaderName || 'Unknown channel'),
+              views: formatViews(viewCount),
+              viewCount,
+              published: String(item.uploadedDate || ''),
+              uploadedTs: typeof item.uploaded === 'number' && item.uploaded > 0 ? item.uploaded : null,
+              duration: formatDuration(durationSeconds) || (isShort ? 'SHORTS' : ''),
+              durationSeconds,
+              isShort,
+              thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+            };
+          })
+          .filter(Boolean);
+      }
+
+      throw new Error('Unexpected API response shape');
+    }
+
+    function applyClientFilters(videos, { sort, duration, era, maxViews, hideShorts }) {
+      const seen = new Set();
+      let list = videos.filter((v) => {
+        if (!v || !v.id || seen.has(v.id)) return false;
+        seen.add(v.id);
+        return true;
+      });
+
+      if (hideShorts) list = list.filter((v) => !v.isShort);
+      if (duration === 'short') list = list.filter((v) => v.durationSeconds !== null && v.durationSeconds < 240);
+      else if (duration === 'medium') list = list.filter((v) => v.durationSeconds !== null && v.durationSeconds >= 240 && v.durationSeconds <= 1200);
+      else if (duration === 'long') list = list.filter((v) => v.durationSeconds !== null && v.durationSeconds > 1200);
+
+      if (era === 'week') {
+        const cutoff = Date.now() - 8 * 86400_000;
+        list = list.filter((v) => v.uploadedTs === null || v.uploadedTs >= cutoff);
+      } else if (era === 'month') {
+        const cutoff = Date.now() - 32 * 86400_000;
+        list = list.filter((v) => v.uploadedTs === null || v.uploadedTs >= cutoff);
+      }
+
+      if (maxViews > 0) {
+        list = list.filter((v) => v.viewCount !== null && v.viewCount <= maxViews);
+      }
+
+      if (sort === 'views') {
+        list = [...list].sort((a, b) => (b.viewCount ?? -1) - (a.viewCount ?? -1));
+      } else if (sort === 'date') {
+        list = [...list].sort((a, b) => (b.uploadedTs ?? 0) - (a.uploadedTs ?? 0));
+      }
+
+      return list;
+    }
+
+    function getCandidateBackends() {
+      const prefs = getBackendPrefs();
+      if (prefs.mode === 'custom' && prefs.customUrl) {
+        try {
+          const parsed = new URL(prefs.customUrl);
+          if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'))) {
+            return [{ id: 'custom', type: 'auto', base: parsed.origin, label: parsed.host }];
+          }
+        } catch {
+          // Ignore malformed custom URL
+        }
+      }
+      if (prefs.mode !== 'auto') {
+        const chosen = REMOTE_BACKENDS.find((b) => b.id === prefs.mode);
+        if (chosen) return [chosen, ...REMOTE_BACKENDS.filter((b) => b.id !== chosen.id)];
+      }
+      if (state.activeBackendLabel) {
+        const sticky = REMOTE_BACKENDS.find((b) => b.label === state.activeBackendLabel);
+        if (sticky) return [sticky, ...REMOTE_BACKENDS.filter((b) => b.id !== sticky.id)];
+      }
+      return REMOTE_BACKENDS;
+    }
+
+    function buildEffectiveQuery(q, mode, era) {
+      let queryStr = mode === 'hashtag' ? `#${q.replace(/^#/, '')}` : q;
+      let uploaded = 'any';
+      const isoDaysAgo = (days) => new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+
+      if (era === '2006-2011') queryStr += ' before:2012';
+      else if (era === '2012-2016') queryStr += ' after:2011 before:2017';
+      else if (era === '2017-2020') queryStr += ' after:2016 before:2021';
+      else if (era === 'month') {
+        uploaded = 'month';
+        queryStr += ` after:${isoDaysAgo(31)}`;
+      } else if (era === 'week') {
+        uploaded = 'week';
+        queryStr += ` after:${isoDaysAgo(7)}`;
+      }
+      return { queryStr, uploaded };
+    }
+
+    async function fetchFromRemoteBackend(backend, opts) {
+      const { q, mode, sort, duration, era, maxViews, hideShorts } = opts;
+      const { queryStr, uploaded } = buildEffectiveQuery(q, mode, era);
+      const cacheKey = `${backend.base}|${queryStr}|${sort}|${duration}|${maxViews}`;
+      const hit = getStaticCached(cacheKey);
+      if (hit) return { backend, videos: applyClientFilters(hit, { sort, duration, era, maxViews, hideShorts }) };
+
+      let rawVideos = [];
+      if (backend.type === 'auto') {
+        // Try local/Dr.Tube API first, then Piped, then Invidious
+        const apiUrl = `${backend.base}/api/browse?${new URLSearchParams({
+          q, mode, sort, duration, era, maxViews: String(maxViews), hideShorts: String(hideShorts),
+        })}`;
+        try {
+          const d = await fetchJsonWithTimeout(apiUrl);
+          if (d && Array.isArray(d.videos)) return { backend, videos: d.videos };
+        } catch {}
+
+        try {
+          const p = await fetchJsonWithTimeout(`${backend.base}/search?q=${encodeURIComponent(queryStr)}&filter=videos`);
+          rawVideos = normalizeRemotePayload(p);
+        } catch {
+          const i = await fetchJsonWithTimeout(`${backend.base}/api/v1/search?q=${encodeURIComponent(queryStr)}&type=video`);
+          rawVideos = normalizeRemotePayload(i);
+        }
+      } else if (backend.type === 'piped') {
+        const data = await fetchJsonWithTimeout(`${backend.base}/search?q=${encodeURIComponent(queryStr)}&filter=videos`);
+        rawVideos = normalizeRemotePayload(data);
+      } else {
+        const invSortMap = { relevance: 'relevance', date: 'upload_date', views: 'view_count' };
+        const p = new URLSearchParams({
+          q: queryStr,
+          type: 'video',
+          sort_by: invSortMap[sort] || 'relevance',
+        });
+        if (duration !== 'any') p.set('duration', duration);
+        if (uploaded !== 'any') p.set('date', uploaded);
+        const data = await fetchJsonWithTimeout(`${backend.base}/api/v1/search?${p}`);
+        rawVideos = normalizeRemotePayload(data);
+      }
+
+      setStaticCached(cacheKey, rawVideos);
+      return {
+        backend,
+        videos: applyClientFilters(rawVideos, { sort, duration, era, maxViews, hideShorts }),
+      };
+    }
+
+    function canTryLocalNodeApi() {
+      if (state.localApiUnavailable) return false;
+      const prefs = getBackendPrefs();
+      if (prefs.mode !== 'auto') return false;
+      return (
+        (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      );
+    }
+
     async function loadBrowse() {
       updateActiveNav();
       const label = state.mode === 'hashtag' ? `#${state.query.replace(/^#/, '')}` : state.query;
       els.viewTitle.textContent = label;
       els.resultCount.textContent = 'Fetching…';
-      els.openSourceLink.hidden = true;
-      els.videoGrid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Scanning YouTube directory (no algorithm)…</div>';
 
-      const params = new URLSearchParams({
+      const opts = {
         q: state.query,
         mode: state.mode,
         sort: els.sortSelect.value,
         duration: els.durationSelect.value,
         era: els.eraSelect.value,
-        maxViews: els.maxViewsSelect.value,
-        hideShorts: String(els.hideShortsCheck.checked),
-      });
+        maxViews: Number(els.maxViewsSelect.value || 0),
+        hideShorts: els.hideShortsCheck.checked,
+      };
+      const { queryStr, uploaded } = buildEffectiveQuery(opts.q, opts.mode, opts.era);
+      const fallbackYtUrl = buildYouTubeSearchUrl(queryStr, { sort: opts.sort, duration: opts.duration, uploaded });
+      els.openSourceLink.href = fallbackYtUrl;
+      els.openSourceLink.hidden = false;
+      els.videoGrid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Scanning YouTube directory (no algorithm)…</div>';
 
-      try {
-        const res = await fetch(`/api/browse?${params}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to load');
-
-        state.videos = data.videos || [];
-        els.resultCount.textContent = `${state.videos.length} videos`;
-        if (data.sourceUrl) {
-          els.openSourceLink.href = data.sourceUrl;
-          els.openSourceLink.hidden = false;
+      // 1. Seamless Local Node Server path when available on localhost
+      if (canTryLocalNodeApi()) {
+        try {
+          const params = new URLSearchParams({
+            q: opts.q,
+            mode: opts.mode,
+            sort: opts.sort,
+            duration: opts.duration,
+            era: opts.era,
+            maxViews: String(opts.maxViews),
+            hideShorts: String(opts.hideShorts),
+          });
+          const data = await fetchJsonWithTimeout(`/api/browse?${params}`, 12000);
+          if (data && Array.isArray(data.videos)) {
+            state.videos = data.videos;
+            els.resultCount.textContent = `${state.videos.length} videos`;
+            if (data.sourceUrl) els.openSourceLink.href = data.sourceUrl;
+            updateModeUI(
+              'Local Node Server',
+              false,
+              'Connected to local server.mjs (127.0.0.1 loop-back only — not exposed outside your machine).'
+            );
+            renderGrid(state.videos);
+            return;
+          }
+        } catch {
+          state.localApiUnavailable = true;
+          // Fall through cleanly to serverless browser mirrors (e.g., static python http.server preview)
         }
-        renderGrid(state.videos);
-      } catch (err) {
-        els.resultCount.textContent = '';
-        els.videoGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Couldn't load videos: ${escapeHtml(err.message)}</div>`;
       }
+
+      // 2. Static Serverless HTML Mode (GitHub Pages / file:// / static CDNs)
+      const candidates = getCandidateBackends();
+      let lastError = null;
+      for (const backend of candidates) {
+        try {
+          const res = await fetchFromRemoteBackend(backend, opts);
+          state.activeBackendLabel = backend.label;
+          state.videos = res.videos;
+          els.resultCount.textContent = `${state.videos.length} videos`;
+          updateModeUI(
+            `Static HTML (${backend.label})`,
+            false,
+            `Running serverless directly in your browser via public CORS endpoint (${backend.label}). Zero repo server or home network exposed.`
+          );
+          renderGrid(state.videos);
+          return;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      els.resultCount.textContent = '';
+      updateModeUI(
+        'Public Mirrors Busy',
+        true,
+        'All configured public CORS endpoints temporarily throttled or offline. Use Open on YouTube or configure a custom mirror below.'
+      );
+      renderBackendUnavailable(fallbackYtUrl, lastError?.message || 'All public mirrors unreachable');
     }
 
     async function loadRoulette() {
@@ -1253,20 +1797,102 @@
       els.openSourceLink.hidden = true;
       els.videoGrid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Searching for unedited raw camera uploads…</div>';
 
-      try {
-        const res = await fetch(`/api/roulette?hideShorts=${els.hideShortsCheck.checked}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to roll');
-
-        state.query = data.query;
-        state.videos = data.videos || [];
-        els.searchInput.value = data.query;
-        els.viewTitle.textContent = `🎲 Raw Upload Roulette — "${data.query}"`;
-        els.resultCount.textContent = `${state.videos.length} raw uploads`;
-        renderGrid(state.videos);
-      } catch (err) {
-        els.videoGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Roulette error: ${escapeHtml(err.message)}</div>`;
+      if (canTryLocalNodeApi()) {
+        try {
+          const data = await fetchJsonWithTimeout(`/api/roulette?hideShorts=${els.hideShortsCheck.checked}`, 12000);
+          if (data && Array.isArray(data.videos)) {
+            state.query = data.query;
+            state.videos = data.videos;
+            els.searchInput.value = data.query;
+            els.viewTitle.textContent = `🎲 Raw Upload Roulette — "${data.query}"`;
+            els.resultCount.textContent = `${state.videos.length} raw uploads`;
+            els.openSourceLink.href = buildYouTubeSearchUrl(`"${data.query}"`);
+            els.openSourceLink.hidden = false;
+            updateModeUI('Local Node Server', false);
+            renderGrid(state.videos);
+            return;
+          }
+        } catch {
+          state.localApiUnavailable = true;
+        }
       }
+
+      const candidates = getCandidateBackends();
+      let lastError = null;
+      let query = '';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        query = randomRawQuery();
+        for (const backend of candidates) {
+          try {
+            const res = await fetchFromRemoteBackend(backend, {
+              q: `"${query}"`,
+              mode: 'search',
+              sort: 'relevance',
+              duration: 'any',
+              era: 'any',
+              maxViews: 0,
+              hideShorts: els.hideShortsCheck.checked,
+            });
+            if (res.videos.length >= 3 || attempt === 2) {
+              state.activeBackendLabel = backend.label;
+              state.query = query;
+              state.videos = res.videos;
+              els.searchInput.value = query;
+              els.viewTitle.textContent = `🎲 Raw Upload Roulette — "${query}"`;
+              els.resultCount.textContent = `${state.videos.length} raw uploads`;
+              els.openSourceLink.href = buildYouTubeSearchUrl(`"${query}"`);
+              els.openSourceLink.hidden = false;
+              updateModeUI(`Static HTML (${backend.label})`, false);
+              renderGrid(state.videos);
+              return;
+            }
+          } catch (err) {
+            lastError = err;
+          }
+        }
+      }
+
+      const fallbackUrl = buildYouTubeSearchUrl(`"${query || 'IMG_1024'}"`);
+      els.openSourceLink.href = fallbackUrl;
+      els.openSourceLink.hidden = false;
+      updateModeUI('Public Mirrors Busy', true);
+      renderBackendUnavailable(fallbackUrl, lastError?.message || 'Roulette mirrors unreachable');
+    }
+
+    function renderBackendUnavailable(ytUrl, detailMsg) {
+      els.videoGrid.innerHTML = '';
+      const box = document.createElement('div');
+      box.className = 'empty-state';
+      box.style.gridColumn = '1 / -1';
+
+      const heading = document.createElement('p');
+      heading.style.margin = '0 0 8px';
+      heading.innerHTML = '<strong>Public API mirrors are temporarily busy or rate-limited.</strong>';
+
+      const sub = document.createElement('p');
+      sub.className = 'muted-note';
+      sub.textContent = `Your exact anti-algorithm query is still ready (${detailMsg}). You can open it straight on YouTube without algorithmic feeds or choose a custom mirror.`;
+
+      const actions = document.createElement('div');
+      actions.className = 'fallback-actions';
+
+      const ytLink = document.createElement('a');
+      ytLink.className = 'primary-btn';
+      ytLink.style.textDecoration = 'none';
+      ytLink.href = ytUrl;
+      ytLink.target = '_blank';
+      ytLink.rel = 'noopener noreferrer';
+      ytLink.textContent = 'Open Filtered Results on YouTube ↗';
+
+      const cfgBtn = document.createElement('button');
+      cfgBtn.type = 'button';
+      cfgBtn.className = 'ghost-btn';
+      cfgBtn.textContent = '⚙ Configure Mirror / Source';
+      cfgBtn.addEventListener('click', openSettingsDialog);
+
+      actions.append(ytLink, cfgBtn);
+      box.append(heading, sub, actions);
+      els.videoGrid.appendChild(box);
     }
 
     function renderSaved() {
@@ -1375,18 +2001,42 @@
 
     // Mandatory fallback for browsers without <dialog closedby="any"> support (e.g. Safari)
     if (!('closedBy' in HTMLDialogElement.prototype)) {
-      els.dialog.addEventListener('click', (event) => {
-        if (event.target !== els.dialog) return;
-        const rect = els.dialog.getBoundingClientRect();
-        const isDialogContent =
-          rect.top <= event.clientY &&
-          event.clientY <= rect.top + rect.height &&
-          rect.left <= event.clientX &&
-          event.clientX <= rect.left + rect.width;
-        if (isDialogContent) return;
-        els.dialog.close();
-      });
+      const outside = (e, dialog) => {
+        const r = dialog.getBoundingClientRect();
+        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      };
+      for (const dialog of document.querySelectorAll('dialog[closedby="any"]')) {
+        let pressedOutside = false;
+        dialog.addEventListener('pointerdown', (e) => {
+          pressedOutside = outside(e, dialog);
+        });
+        dialog.addEventListener('pointerup', (e) => {
+          if (pressedOutside && outside(e, dialog)) dialog.close();
+        });
+      }
     }
+
+    function openSettingsDialog() {
+      const prefs = getBackendPrefs();
+      els.backendModeSelect.value = prefs.mode;
+      els.customApiInput.value = prefs.customUrl;
+      els.customApiWrap.hidden = prefs.mode !== 'custom';
+      els.settingsDialog.showModal();
+    }
+
+    els.settingsBtn.addEventListener('click', openSettingsDialog);
+    els.backendModeSelect.addEventListener('change', () => {
+      els.customApiWrap.hidden = els.backendModeSelect.value !== 'custom';
+    });
+    els.saveSettingsBtn.addEventListener('click', () => {
+      localStorage.setItem('tubedir_backend_mode', els.backendModeSelect.value);
+      localStorage.setItem('tubedir_custom_api', els.customApiInput.value.trim());
+      state.activeBackendLabel = '';
+      state.localApiUnavailable = false;
+      els.settingsDialog.close();
+      if (state.mode === 'roulette') loadRoulette();
+      else if (state.mode !== 'saved') loadBrowse();
+    });
 
     // Event wiring
     els.searchForm.addEventListener('submit', (e) => {
