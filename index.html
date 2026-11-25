@@ -523,6 +523,25 @@
       border-radius: var(--radius);
     }
 
+    .card--deferred {
+      content-visibility: auto;
+      contain-intrinsic-size: auto none auto 285px;
+    }
+
+    .doom-sentinel {
+      margin-top: 24px;
+      padding: 16px;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
     .fallback-actions {
       display: flex;
       flex-wrap: wrap;
@@ -842,6 +861,16 @@
           </select>
         </label>
 
+        <label class="filter-group" for="limitSelect">
+          Show
+          <select id="limitSelect" name="limit">
+            <option value="20" selected>20 videos</option>
+            <option value="50">50 videos</option>
+            <option value="100">100 videos</option>
+            <option value="doom">Doom Scroll</option>
+          </select>
+        </label>
+
         <label class="checkbox-label">
           <input type="checkbox" id="hideShortsCheck" checked>
           Hide Shorts
@@ -858,6 +887,10 @@
         </div>
       </div>
       <div class="grid" id="videoGrid"></div>
+      <div class="doom-sentinel" id="doomBar" hidden>
+        <span id="doomStatusText" role="status"></span>
+        <button type="button" class="ghost-btn" id="doomMoreBtn">Load more videos ↓</button>
+      </div>
     </section>
   </main>
 
@@ -1229,9 +1262,12 @@
       query: 'independent short film',
       mode: 'search', // 'search' | 'hashtag' | 'roulette' | 'saved'
       videos: [],
+      seenIds: new Set(),
       activeVideo: null,
       activeBackendLabel: '',
       localApiUnavailable: false,
+      fetchSeq: 0,
+      pager: null,
     };
 
     const REMOTE_BACKENDS = [
@@ -1256,11 +1292,15 @@
       durationSelect: document.getElementById('durationSelect'),
       eraSelect: document.getElementById('eraSelect'),
       maxViewsSelect: document.getElementById('maxViewsSelect'),
+      limitSelect: document.getElementById('limitSelect'),
       hideShortsCheck: document.getElementById('hideShortsCheck'),
       viewTitle: document.getElementById('viewTitle'),
       resultCount: document.getElementById('resultCount'),
       openSourceLink: document.getElementById('openSourceLink'),
       videoGrid: document.getElementById('videoGrid'),
+      doomBar: document.getElementById('doomBar'),
+      doomStatusText: document.getElementById('doomStatusText'),
+      doomMoreBtn: document.getElementById('doomMoreBtn'),
       rouletteBtn: document.getElementById('rouletteBtn'),
       shuffleBtn: document.getElementById('shuffleBtn'),
       savedBtn: document.getElementById('savedBtn'),
@@ -1649,51 +1689,192 @@
       return { queryStr, uploaded };
     }
 
-    async function fetchFromRemoteBackend(backend, opts) {
+    function getLimitPref() {
+      const val = els.limitSelect.value;
+      return val === '50' || val === '100' || val === 'doom' ? val : '20';
+    }
+
+    function updateDoomBar({ visible = false, text = '', hasMore = false, loading = false } = {}) {
+      els.doomBar.hidden = !visible;
+      if (!visible) return;
+      els.doomStatusText.textContent = text;
+      els.doomMoreBtn.hidden = !hasMore;
+      els.doomMoreBtn.disabled = loading;
+      els.doomMoreBtn.textContent = loading ? 'Loading more…' : 'Load more videos ↓';
+    }
+
+    function formatResultSummary(count, isDoom, extra = 'videos') {
+      return isDoom ? `${count} ${extra} · Doom Scroll` : `${count} ${extra}`;
+    }
+
+    async function fetchRemotePage(backend, opts, pageState = {}) {
       const { q, mode, sort, duration, era, maxViews, hideShorts } = opts;
       const { queryStr, uploaded } = buildEffectiveQuery(q, mode, era);
-      const cacheKey = `${backend.base}|${queryStr}|${sort}|${duration}|${maxViews}`;
+      const pageNum = pageState.page || 1;
+      const nextToken = pageState.nextpage || null;
+      const resolvedKind = pageState.resolvedKind || backend.type;
+
+      const cacheKey = `${backend.base}|${resolvedKind}|${queryStr}|${sort}|${duration}|${pageNum}|${nextToken || ''}`;
       const hit = getStaticCached(cacheKey);
-      if (hit) return { backend, videos: applyClientFilters(hit, { sort, duration, era, maxViews, hideShorts }) };
+      if (hit) {
+        return {
+          rawVideos: hit.rawVideos,
+          nextpage: hit.nextpage,
+          nextPageNum: pageNum + 1,
+          hasMore: hit.hasMore,
+          resolvedKind: hit.resolvedKind,
+          cursor: hit.cursor || null,
+        };
+      }
 
       let rawVideos = [];
-      if (backend.type === 'auto') {
-        // Try local/Dr.Tube API first, then Piped, then Invidious
-        const apiUrl = `${backend.base}/api/browse?${new URLSearchParams({
-          q, mode, sort, duration, era, maxViews: String(maxViews), hideShorts: String(hideShorts),
-        })}`;
-        try {
-          const d = await fetchJsonWithTimeout(apiUrl);
-          if (d && Array.isArray(d.videos)) return { backend, videos: d.videos };
-        } catch {}
+      let outNextpage = null;
+      let outHasMore = false;
+      let outKind = resolvedKind;
+      let outCursor = null;
 
-        try {
-          const p = await fetchJsonWithTimeout(`${backend.base}/search?q=${encodeURIComponent(queryStr)}&filter=videos`);
-          rawVideos = normalizeRemotePayload(p);
-        } catch {
-          const i = await fetchJsonWithTimeout(`${backend.base}/api/v1/search?q=${encodeURIComponent(queryStr)}&type=video`);
-          rawVideos = normalizeRemotePayload(i);
+      if (resolvedKind === 'auto') {
+        if (pageNum === 1) {
+          try {
+            const apiUrl = `${backend.base}/api/browse?${new URLSearchParams({
+              q, mode, sort, duration, era, maxViews: String(maxViews), hideShorts: String(hideShorts), limit: getLimitPref(),
+            })}`;
+            const d = await fetchJsonWithTimeout(apiUrl);
+            if (d && Array.isArray(d.videos)) {
+              const res = {
+                rawVideos: d.videos,
+                nextpage: null,
+                nextPageNum: 2,
+                hasMore: Boolean(d.hasMore),
+                resolvedKind: 'drtube',
+                cursor: d.cursor || null,
+              };
+              setStaticCached(cacheKey, res);
+              return res;
+            }
+          } catch {}
+
+          try {
+            const p = await fetchJsonWithTimeout(`${backend.base}/search?q=${encodeURIComponent(queryStr)}&filter=videos`);
+            rawVideos = normalizeRemotePayload(p);
+            outKind = 'piped';
+            outNextpage = p?.nextpage || null;
+            outHasMore = Boolean(outNextpage);
+          } catch {
+            const i = await fetchJsonWithTimeout(`${backend.base}/api/v1/search?q=${encodeURIComponent(queryStr)}&type=video&page=1`);
+            rawVideos = normalizeRemotePayload(i);
+            outKind = 'invidious';
+            outHasMore = rawVideos.length >= 10;
+          }
         }
-      } else if (backend.type === 'piped') {
-        const data = await fetchJsonWithTimeout(`${backend.base}/search?q=${encodeURIComponent(queryStr)}&filter=videos`);
+      } else if (resolvedKind === 'drtube' && pageState.cursor) {
+        const d = await fetchJsonWithTimeout(`${backend.base}/api/nextpage?cursor=${encodeURIComponent(pageState.cursor)}`);
+        rawVideos = d?.videos || [];
+        outCursor = d?.cursor || null;
+        outHasMore = Boolean(d?.hasMore && outCursor);
+      } else if (resolvedKind === 'piped') {
+        const url = nextToken
+          ? `${backend.base}/nextpage/search?nextpage=${encodeURIComponent(nextToken)}&q=${encodeURIComponent(queryStr)}&filter=videos`
+          : `${backend.base}/search?q=${encodeURIComponent(queryStr)}&filter=videos`;
+        const data = await fetchJsonWithTimeout(url);
         rawVideos = normalizeRemotePayload(data);
+        outNextpage = data?.nextpage || null;
+        outHasMore = Boolean(outNextpage);
       } else {
         const invSortMap = { relevance: 'relevance', date: 'upload_date', views: 'view_count' };
         const p = new URLSearchParams({
           q: queryStr,
           type: 'video',
           sort_by: invSortMap[sort] || 'relevance',
+          page: String(pageNum),
         });
         if (duration !== 'any') p.set('duration', duration);
         if (uploaded !== 'any') p.set('date', uploaded);
         const data = await fetchJsonWithTimeout(`${backend.base}/api/v1/search?${p}`);
         rawVideos = normalizeRemotePayload(data);
+        outHasMore = rawVideos.length >= 10;
       }
 
-      setStaticCached(cacheKey, rawVideos);
+      const result = {
+        rawVideos,
+        nextpage: outNextpage,
+        nextPageNum: pageNum + 1,
+        hasMore: outHasMore,
+        resolvedKind: outKind,
+        cursor: outCursor,
+      };
+      setStaticCached(cacheKey, result);
+      return result;
+    }
+
+    async function collectRemoteBatch(backend, opts, targetCount, isDoom, seq) {
+      const seen = new Set();
+      let collected = [];
+      let pageState = { page: 1, nextpage: null, resolvedKind: backend.type, cursor: null };
+      let hasMore = false;
+      const maxPages = isDoom ? 1 : targetCount >= 100 ? 7 : targetCount >= 50 ? 4 : 1;
+
+      for (let i = 0; i < maxPages; i++) {
+        if (seq !== state.fetchSeq) return null;
+        const pageRes = await fetchRemotePage(backend, opts, pageState);
+        if (seq !== state.fetchSeq) return null;
+
+        const filtered = pageRes.resolvedKind === 'drtube'
+          ? pageRes.rawVideos
+          : applyClientFilters(pageRes.rawVideos, {
+              sort: isDoom ? 'relevance' : opts.sort,
+              duration: opts.duration,
+              era: opts.era,
+              maxViews: opts.maxViews,
+              hideShorts: opts.hideShorts,
+            });
+
+        for (const v of filtered) {
+          if (!seen.has(v.id)) {
+            seen.add(v.id);
+            collected.push(v);
+          }
+        }
+
+        hasMore = pageRes.hasMore;
+        pageState = {
+          page: pageRes.nextPageNum,
+          nextpage: pageRes.nextpage,
+          resolvedKind: pageRes.resolvedKind,
+          cursor: pageRes.cursor,
+        };
+
+        if (!isDoom && targetCount > 20 && collected.length < targetCount && hasMore && i + 1 < maxPages) {
+          els.resultCount.textContent = `Fetching… (${collected.length}/${targetCount})`;
+        }
+
+        if (collected.length >= targetCount || !hasMore) break;
+      }
+
+      if (!isDoom && (opts.sort === 'views' || opts.sort === 'date')) {
+        collected = applyClientFilters(collected, {
+          sort: opts.sort,
+          duration: opts.duration,
+          era: opts.era,
+          maxViews: opts.maxViews,
+          hideShorts: opts.hideShorts,
+        });
+      }
+
       return {
         backend,
-        videos: applyClientFilters(rawVideos, { sort, duration, era, maxViews, hideShorts }),
+        videos: isDoom ? collected : collected.slice(0, targetCount),
+        pager: isDoom
+          ? {
+              kind: 'remote',
+              backend,
+              opts,
+              pageState,
+              hasMore,
+              loading: false,
+              rouletteMode: false,
+            }
+          : null,
       };
     }
 
@@ -1708,10 +1889,19 @@
     }
 
     async function loadBrowse() {
+      const seq = ++state.fetchSeq;
+      state.pager = null;
+      state.seenIds = new Set();
       updateActiveNav();
+      updateDoomBar({ visible: false });
+
       const label = state.mode === 'hashtag' ? `#${state.query.replace(/^#/, '')}` : state.query;
+      const limitMode = getLimitPref();
+      const doom = limitMode === 'doom';
+      const targetCount = doom ? 20 : Number(limitMode) || 20;
+
       els.viewTitle.textContent = label;
-      els.resultCount.textContent = 'Fetching…';
+      els.resultCount.textContent = targetCount > 20 ? `Fetching up to ${targetCount}…` : 'Fetching…';
 
       const opts = {
         q: state.query,
@@ -1739,11 +1929,13 @@
             era: opts.era,
             maxViews: String(opts.maxViews),
             hideShorts: String(opts.hideShorts),
+            limit: limitMode,
           });
-          const data = await fetchJsonWithTimeout(`/api/browse?${params}`, 12000);
+          const data = await fetchJsonWithTimeout(`/api/browse?${params}`, 15000);
+          if (seq !== state.fetchSeq) return;
           if (data && Array.isArray(data.videos)) {
             state.videos = data.videos;
-            els.resultCount.textContent = `${state.videos.length} videos`;
+            els.resultCount.textContent = formatResultSummary(state.videos.length, doom);
             if (data.sourceUrl) els.openSourceLink.href = data.sourceUrl;
             updateModeUI(
               'Local Node Server',
@@ -1751,6 +1943,22 @@
               'Connected to local server.mjs (127.0.0.1 loop-back only — not exposed outside your machine).'
             );
             renderGrid(state.videos);
+            if (doom) {
+              state.pager = {
+                kind: 'local',
+                cursor: data.cursor || null,
+                hasMore: Boolean(data.hasMore && data.cursor),
+                loading: false,
+                rouletteMode: false,
+              };
+              updateDoomBar({
+                visible: true,
+                text: state.pager.hasMore
+                  ? `${state.videos.length} videos loaded — scroll down for more`
+                  : `${state.videos.length} videos loaded (end of results)`,
+                hasMore: state.pager.hasMore,
+              });
+            }
             return;
           }
         } catch {
@@ -1764,22 +1972,34 @@
       let lastError = null;
       for (const backend of candidates) {
         try {
-          const res = await fetchFromRemoteBackend(backend, opts);
+          const res = await collectRemoteBatch(backend, opts, targetCount, doom, seq);
+          if (!res || seq !== state.fetchSeq) return;
           state.activeBackendLabel = backend.label;
           state.videos = res.videos;
-          els.resultCount.textContent = `${state.videos.length} videos`;
+          els.resultCount.textContent = formatResultSummary(state.videos.length, doom);
           updateModeUI(
             `Static HTML (${backend.label})`,
             false,
             `Running serverless directly in your browser via public CORS endpoint (${backend.label}). Zero repo server or home network exposed.`
           );
           renderGrid(state.videos);
+          if (doom && res.pager) {
+            state.pager = res.pager;
+            updateDoomBar({
+              visible: true,
+              text: state.pager.hasMore
+                ? `${state.videos.length} videos loaded — scroll down for more`
+                : `${state.videos.length} videos loaded (end of results)`,
+              hasMore: state.pager.hasMore,
+            });
+          }
           return;
         } catch (err) {
           lastError = err;
         }
       }
 
+      if (seq !== state.fetchSeq) return;
       els.resultCount.textContent = '';
       updateModeUI(
         'Public Mirrors Busy',
@@ -1790,8 +2010,17 @@
     }
 
     async function loadRoulette() {
+      const seq = ++state.fetchSeq;
       state.mode = 'roulette';
+      state.pager = null;
+      state.seenIds = new Set();
       updateActiveNav();
+      updateDoomBar({ visible: false });
+
+      const limitMode = getLimitPref();
+      const doom = limitMode === 'doom';
+      const targetCount = doom ? 20 : Number(limitMode) || 20;
+
       els.viewTitle.textContent = '🎲 Raw Upload Roulette';
       els.resultCount.textContent = 'Rolling camera filename…';
       els.openSourceLink.hidden = true;
@@ -1799,17 +2028,37 @@
 
       if (canTryLocalNodeApi()) {
         try {
-          const data = await fetchJsonWithTimeout(`/api/roulette?hideShorts=${els.hideShortsCheck.checked}`, 12000);
+          const data = await fetchJsonWithTimeout(
+            `/api/roulette?hideShorts=${els.hideShortsCheck.checked}&limit=${limitMode}`,
+            15000
+          );
+          if (seq !== state.fetchSeq) return;
           if (data && Array.isArray(data.videos)) {
             state.query = data.query;
             state.videos = data.videos;
             els.searchInput.value = data.query;
             els.viewTitle.textContent = `🎲 Raw Upload Roulette — "${data.query}"`;
-            els.resultCount.textContent = `${state.videos.length} raw uploads`;
+            els.resultCount.textContent = formatResultSummary(state.videos.length, doom, 'raw uploads');
             els.openSourceLink.href = buildYouTubeSearchUrl(`"${data.query}"`);
             els.openSourceLink.hidden = false;
             updateModeUI('Local Node Server', false);
             renderGrid(state.videos);
+            if (doom) {
+              state.pager = {
+                kind: 'local',
+                cursor: data.cursor || null,
+                hasMore: Boolean(data.hasMore && data.cursor),
+                loading: false,
+                rouletteMode: true,
+              };
+              updateDoomBar({
+                visible: true,
+                text: state.pager.hasMore
+                  ? `${state.videos.length} raw uploads loaded — scroll down for more`
+                  : `${state.videos.length} raw uploads loaded`,
+                hasMore: state.pager.hasMore,
+              });
+            }
             return;
           }
         } catch {
@@ -1819,44 +2068,170 @@
 
       const candidates = getCandidateBackends();
       let lastError = null;
-      let query = '';
-      for (let attempt = 0; attempt < 3; attempt++) {
-        query = randomRawQuery();
+      const seen = new Set();
+      const collected = [];
+      let primaryQuery = '';
+      let lastBackend = null;
+      let lastPager = null;
+
+      const maxRolls = targetCount > 20 ? 5 : 3;
+      for (let attempt = 0; attempt < maxRolls && collected.length < targetCount; attempt++) {
+        if (seq !== state.fetchSeq) return;
+        const rollQuery = randomRawQuery();
         for (const backend of candidates) {
           try {
-            const res = await fetchFromRemoteBackend(backend, {
-              q: `"${query}"`,
+            const opts = {
+              q: `"${rollQuery}"`,
               mode: 'search',
               sort: 'relevance',
               duration: 'any',
               era: 'any',
               maxViews: 0,
               hideShorts: els.hideShortsCheck.checked,
-            });
-            if (res.videos.length >= 3 || attempt === 2) {
-              state.activeBackendLabel = backend.label;
-              state.query = query;
-              state.videos = res.videos;
-              els.searchInput.value = query;
-              els.viewTitle.textContent = `🎲 Raw Upload Roulette — "${query}"`;
-              els.resultCount.textContent = `${state.videos.length} raw uploads`;
-              els.openSourceLink.href = buildYouTubeSearchUrl(`"${query}"`);
-              els.openSourceLink.hidden = false;
-              updateModeUI(`Static HTML (${backend.label})`, false);
-              renderGrid(state.videos);
-              return;
+            };
+            const res = await collectRemoteBatch(backend, opts, targetCount - collected.length, doom, seq);
+            if (!res || seq !== state.fetchSeq) return;
+            if (res.videos.length >= 3 || attempt === maxRolls - 1) {
+              if (!primaryQuery) primaryQuery = rollQuery;
+              lastBackend = backend;
+              lastPager = res.pager;
+              for (const v of res.videos) {
+                if (!seen.has(v.id)) {
+                  seen.add(v.id);
+                  collected.push(v);
+                }
+              }
+              break;
             }
           } catch (err) {
             lastError = err;
           }
         }
+        if (collected.length >= targetCount) break;
+        if (targetCount === 20 && collected.length >= 3) break;
       }
 
-      const fallbackUrl = buildYouTubeSearchUrl(`"${query || 'IMG_1024'}"`);
+      if (seq !== state.fetchSeq) return;
+      if (lastBackend && collected.length) {
+        const shown = doom ? collected : collected.slice(0, targetCount);
+        state.activeBackendLabel = lastBackend.label;
+        state.query = primaryQuery;
+        state.videos = shown;
+        els.searchInput.value = primaryQuery;
+        els.viewTitle.textContent = `🎲 Raw Upload Roulette — "${primaryQuery}"`;
+        els.resultCount.textContent = formatResultSummary(shown.length, doom, 'raw uploads');
+        els.openSourceLink.href = buildYouTubeSearchUrl(`"${primaryQuery}"`);
+        els.openSourceLink.hidden = false;
+        updateModeUI(`Static HTML (${lastBackend.label})`, false);
+        renderGrid(shown);
+        if (doom) {
+          state.pager = lastPager
+            ? { ...lastPager, rouletteMode: true, hasMore: true }
+            : null;
+          updateDoomBar({
+            visible: true,
+            text: `${shown.length} raw uploads loaded — scroll down for infinite roulette`,
+            hasMore: true,
+          });
+        }
+        return;
+      }
+
+      const fallbackUrl = buildYouTubeSearchUrl(`"${primaryQuery || 'IMG_1024'}"`);
       els.openSourceLink.href = fallbackUrl;
       els.openSourceLink.hidden = false;
       updateModeUI('Public Mirrors Busy', true);
       renderBackendUnavailable(fallbackUrl, lastError?.message || 'Roulette mirrors unreachable');
+    }
+
+    async function loadNextDoomPage() {
+      const pager = state.pager;
+      if (!pager || pager.loading || !pager.hasMore || getLimitPref() !== 'doom') return;
+
+      const seq = state.fetchSeq;
+      pager.loading = true;
+      updateDoomBar({
+        visible: true,
+        text: `Loading more (${state.videos.length} loaded)…`,
+        hasMore: true,
+        loading: true,
+      });
+
+      try {
+        let nextVideos = [];
+        if (pager.kind === 'local') {
+          if (pager.cursor) {
+            const d = await fetchJsonWithTimeout(`/api/nextpage?cursor=${encodeURIComponent(pager.cursor)}`, 15000);
+            if (seq !== state.fetchSeq) return;
+            nextVideos = d?.videos || [];
+            pager.cursor = d?.cursor || null;
+            pager.hasMore = Boolean(d?.hasMore && pager.cursor);
+          } else {
+            pager.hasMore = false;
+          }
+        } else {
+          // If Doom Scroll roulette finishes one camera ID's results, roll a fresh camera filename automatically
+          if (!pager.pageState?.nextpage && pager.backend.type === 'piped' && pager.rouletteMode) {
+            const freshQuery = randomRawQuery();
+            pager.opts = { ...pager.opts, q: `"${freshQuery}"` };
+            pager.pageState = { page: 1, nextpage: null, resolvedKind: pager.backend.type, cursor: null };
+          }
+
+          const pageRes = await fetchRemotePage(pager.backend, pager.opts, pager.pageState);
+          if (seq !== state.fetchSeq) return;
+
+          nextVideos = pageRes.resolvedKind === 'drtube'
+            ? pageRes.rawVideos
+            : applyClientFilters(pageRes.rawVideos, {
+                sort: 'relevance',
+                duration: pager.opts.duration,
+                era: pager.opts.era,
+                maxViews: pager.opts.maxViews,
+                hideShorts: pager.opts.hideShorts,
+              });
+
+          pager.pageState = {
+            page: pageRes.nextPageNum,
+            nextpage: pageRes.nextpage,
+            resolvedKind: pageRes.resolvedKind,
+            cursor: pageRes.cursor,
+          };
+          pager.hasMore = Boolean(pageRes.hasMore || (pager.rouletteMode && state.videos.length < 400));
+        }
+
+        if (seq !== state.fetchSeq) return;
+        const fresh = [];
+        for (const v of nextVideos) {
+          if (v && v.id && !state.seenIds.has(v.id)) {
+            fresh.push(v);
+          }
+        }
+
+        if (fresh.length) {
+          appendGridBatch(fresh);
+          const noun = pager.rouletteMode ? 'raw uploads' : 'videos';
+          els.resultCount.textContent = formatResultSummary(state.videos.length, true, noun);
+        }
+
+        updateDoomBar({
+          visible: true,
+          text: pager.hasMore
+            ? `${state.videos.length} ${pager.rouletteMode ? 'raw uploads' : 'videos'} loaded — scroll down for more`
+            : `${state.videos.length} ${pager.rouletteMode ? 'raw uploads' : 'videos'} loaded (end of results)`,
+          hasMore: pager.hasMore,
+          loading: false,
+        });
+      } catch (err) {
+        if (seq !== state.fetchSeq) return;
+        updateDoomBar({
+          visible: true,
+          text: `Paused loading more (${err?.message || 'mirror busy'}).`,
+          hasMore: true,
+          loading: false,
+        });
+      } finally {
+        pager.loading = false;
+      }
     }
 
     function renderBackendUnavailable(ytUrl, detailMsg) {
@@ -1896,8 +2271,12 @@
     }
 
     function renderSaved() {
+      ++state.fetchSeq;
       state.mode = 'saved';
+      state.pager = null;
+      state.seenIds = new Set();
       updateActiveNav();
+      updateDoomBar({ visible: false });
       const saved = getSaved();
       state.videos = saved;
       els.viewTitle.textContent = '★ Watch Later (Local)';
@@ -1915,67 +2294,90 @@
         .replaceAll("'", '&#39;');
     }
 
+    function createVideoCard(v, idx) {
+      const card = document.createElement('article');
+      card.className = idx >= 12 ? 'card card--deferred' : 'card';
+
+      const thumbBtn = document.createElement('button');
+      thumbBtn.type = 'button';
+      thumbBtn.className = 'thumb-btn';
+      thumbBtn.setAttribute('aria-label', `Play ${v.title}`);
+      thumbBtn.addEventListener('click', () => openPlayer(v));
+
+      const img = document.createElement('img');
+      img.src = v.thumbnail;
+      img.alt = v.title;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      thumbBtn.appendChild(img);
+
+      if (v.duration) {
+        const badge = document.createElement('span');
+        badge.className = 'duration-badge';
+        badge.textContent = v.duration;
+        thumbBtn.appendChild(badge);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'card-body';
+
+      const title = document.createElement('h3');
+      title.className = 'card-title';
+      title.textContent = v.title;
+      title.addEventListener('click', () => openPlayer(v));
+
+      const channel = document.createElement('div');
+      channel.className = 'card-channel';
+      channel.textContent = v.channel;
+
+      const footer = document.createElement('div');
+      footer.className = 'card-footer';
+
+      const stats = document.createElement('span');
+      stats.textContent = [v.views, v.published].filter(Boolean).join(' · ');
+
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      const saved = isSaved(v.id);
+      saveBtn.className = `save-mini${saved ? ' saved' : ''}`;
+      saveBtn.textContent = saved ? '★ Saved' : '☆ Save';
+      saveBtn.addEventListener('click', () => toggleSave(v));
+
+      footer.append(stats, saveBtn);
+      body.append(title, channel, footer);
+      card.append(thumbBtn, body);
+      return card;
+    }
+
     function renderGrid(videos, emptyMsg = 'No videos matched those filters. Try widening the view count or era filter.') {
+      state.seenIds = new Set();
       if (!videos.length) {
         els.videoGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">${escapeHtml(emptyMsg)}</div>`;
         return;
       }
 
       els.videoGrid.innerHTML = '';
-      for (const v of videos) {
-        const card = document.createElement('article');
-        card.className = 'card';
+      const frag = document.createDocumentFragment();
+      videos.forEach((v, idx) => {
+        state.seenIds.add(v.id);
+        frag.appendChild(createVideoCard(v, idx));
+      });
+      els.videoGrid.appendChild(frag);
+    }
 
-        const thumbBtn = document.createElement('button');
-        thumbBtn.type = 'button';
-        thumbBtn.className = 'thumb-btn';
-        thumbBtn.setAttribute('aria-label', `Play ${v.title}`);
-        thumbBtn.addEventListener('click', () => openPlayer(v));
-
-        const img = document.createElement('img');
-        img.src = v.thumbnail;
-        img.alt = v.title;
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        thumbBtn.appendChild(img);
-
-        if (v.duration) {
-          const badge = document.createElement('span');
-          badge.className = 'duration-badge';
-          badge.textContent = v.duration;
-          thumbBtn.appendChild(badge);
-        }
-
-        const body = document.createElement('div');
-        body.className = 'card-body';
-
-        const title = document.createElement('h3');
-        title.className = 'card-title';
-        title.textContent = v.title;
-        title.addEventListener('click', () => openPlayer(v));
-
-        const channel = document.createElement('div');
-        channel.className = 'card-channel';
-        channel.textContent = v.channel;
-
-        const footer = document.createElement('div');
-        footer.className = 'card-footer';
-
-        const stats = document.createElement('span');
-        stats.textContent = [v.views, v.published].filter(Boolean).join(' · ');
-
-        const saveBtn = document.createElement('button');
-        saveBtn.type = 'button';
-        const saved = isSaved(v.id);
-        saveBtn.className = `save-mini${saved ? ' saved' : ''}`;
-        saveBtn.textContent = saved ? '★ Saved' : '☆ Save';
-        saveBtn.addEventListener('click', () => toggleSave(v));
-
-        footer.append(stats, saveBtn);
-        body.append(title, channel, footer);
-        card.append(thumbBtn, body);
-        els.videoGrid.appendChild(card);
+    function appendGridBatch(newVideos) {
+      if (!newVideos.length) return;
+      const startIdx = state.videos.length;
+      const frag = document.createDocumentFragment();
+      let added = 0;
+      for (const v of newVideos) {
+        if (!v || !v.id || state.seenIds.has(v.id)) continue;
+        state.seenIds.add(v.id);
+        state.videos.push(v);
+        frag.appendChild(createVideoCard(v, startIdx + added));
+        added++;
       }
+      if (added) els.videoGrid.appendChild(frag);
     }
 
     function openPlayer(video) {
@@ -2053,12 +2455,29 @@
       loadBrowse();
     });
 
-    for (const ctrl of [els.sortSelect, els.durationSelect, els.eraSelect, els.maxViewsSelect, els.hideShortsCheck]) {
+    for (const ctrl of [els.sortSelect, els.durationSelect, els.eraSelect, els.maxViewsSelect, els.limitSelect, els.hideShortsCheck]) {
       ctrl.addEventListener('change', () => {
+        if (ctrl === els.limitSelect) {
+          localStorage.setItem('tubedir_limit', getLimitPref());
+        }
         if (state.mode === 'saved') return;
         if (state.mode === 'roulette') loadRoulette();
         else loadBrowse();
       });
+    }
+
+    els.doomMoreBtn.addEventListener('click', loadNextDoomPage);
+
+    if ('IntersectionObserver' in window) {
+      const doomObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            loadNextDoomPage();
+          }
+        },
+        { rootMargin: '420px 0px' }
+      );
+      doomObserver.observe(els.doomBar);
     }
 
     els.rouletteBtn.addEventListener('click', loadRoulette);
@@ -2073,6 +2492,10 @@
     });
 
     // Init
+    const savedLimit = localStorage.getItem('tubedir_limit');
+    if (savedLimit && ['20', '50', '100', 'doom'].includes(savedLimit)) {
+      els.limitSelect.value = savedLimit;
+    }
     setSaved(getSaved());
     buildSidebar();
     els.searchInput.value = state.query;

@@ -19,7 +19,7 @@ Because the entire frontend lives inside a single standalone [`index.html`](./in
 
 - **22 Directory Categories & 150+ Sub-Topics:** Film & Animation, Craft & Wood, Restoration, Weird Physics, Retro Tech, Obscure History, Sound Oddities, Slow TV, Vintage TV Archives, and more.
 - **90+ Curated `#Hashtags` + Any Custom `#tag`:** Browse YouTube hashtags without Shorts shelves or personalized recommendation injections.
-- **Anti-Algorithm Filters:** Combine Sort (Relevance / Newest / Most Viewed), Length (<4m, 4–20m, 20m+ deep dives), Era (`2006–2011` Golden Era time machine), **Hidden Gems** (Under 100K / 25K / 5K / 1K views), and Hide Shorts.
+- **Anti-Algorithm Filters & Result Limits:** Combine Sort (Relevance / Newest / Most Viewed), Length (<4m, 4–20m, 20m+ deep dives), Era (`2006–2011` Golden Era time machine), **Hidden Gems** (Under 100K / 25K / 5K / 1K views), **Show** (`20`, `50`, `100` videos, or infinite **Doom Scroll**), and Hide Shorts.
 - **Raw Upload Roulette:** Searches random camera filenames (`IMG_XXXX`, `MVI_XXXX`, `DSC_XXXX`) to surface raw, uncurated uploads.
 - **Distraction-Free Theater & Local Watch Later:** Watch in a clean `youtube-nocookie.com` modal (no sidebar, no comments, no autoplay) and save videos locally in `localStorage`.
 

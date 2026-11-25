@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,27 @@ const YT_HEADERS = {
 // Simple 5-minute in-memory cache so flipping tabs feels instant
 const cache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const cursorStore = new Map();
+const CURSOR_TTL_MS = 10 * 60 * 1000;
+
+function saveCursor(payload) {
+  if (!payload || !payload.continuation || !payload.apiKey) return null;
+  const now = Date.now();
+  for (const [k, v] of cursorStore) {
+    if (now - v.ts > CURSOR_TTL_MS || cursorStore.size > 100) cursorStore.delete(k);
+  }
+  const id = crypto.randomUUID();
+  cursorStore.set(id, { ts: now, ...payload });
+  return id;
+}
+
+function takeCursor(id) {
+  const entry = cursorStore.get(id);
+  if (!entry) return null;
+  cursorStore.delete(id);
+  if (Date.now() - entry.ts > CURSOR_TTL_MS) return null;
+  return entry;
+}
 
 function getCached(key) {
   const entry = cache.get(key);
@@ -194,6 +216,29 @@ function extractVideosFromInitialData(data) {
   return videos;
 }
 
+function extractContinuationToken(data) {
+  let token = '';
+  function walk(node) {
+    if (token || !node || typeof node !== 'object') return;
+    if (node.continuationItemRenderer) {
+      const cmd =
+        node.continuationItemRenderer?.continuationEndpoint?.continuationCommand ||
+        node.continuationItemRenderer?.button?.buttonRenderer?.command?.continuationCommand;
+      if (cmd?.token) {
+        token = cmd.token;
+        return;
+      }
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    for (const key of Object.keys(node)) walk(node[key]);
+  }
+  walk(data);
+  return token;
+}
+
 async function fetchYouTubePage(url) {
   const cached = getCached(url);
   if (cached) return cached;
@@ -209,8 +254,80 @@ async function fetchYouTubePage(url) {
   }
   const data = JSON.parse(match[1]);
   const videos = extractVideosFromInitialData(data);
-  setCached(url, videos);
-  return videos;
+  const continuation = extractContinuationToken(data);
+  const apiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1] || '';
+  const clientVersion = html.match(/"clientVersion":"([^"]+)"/)?.[1] || '2.20261110.01.00';
+  const result = { videos, continuation, apiKey, clientVersion };
+  setCached(url, result);
+  return result;
+}
+
+async function fetchYouTubeContinuation({ apiKey, clientVersion, continuation }) {
+  if (!apiKey || !continuation) return { videos: [], continuation: '' };
+  const res = await fetch(`https://www.youtube.com/youtubei/v1/search?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: {
+      ...YT_HEADERS,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: clientVersion || '2.20261110.01.00',
+          hl: 'en',
+          gl: 'US',
+        },
+      },
+      continuation,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`YouTube continuation returned HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return {
+    videos: extractVideosFromInitialData(data),
+    continuation: extractContinuationToken(data),
+  };
+}
+
+function filterVideoBatch(list, { hideShorts, maxViews }) {
+  let out = list;
+  if (hideShorts) out = out.filter((v) => !v.isShort);
+  if (maxViews > 0) out = out.filter((v) => v.viewCount !== null && v.viewCount <= maxViews);
+  return out;
+}
+
+async function collectMoreWithContinuations(initialVideos, meta, targetCount, filterOpts) {
+  const seen = new Set();
+  const collected = [];
+  const pushFiltered = (batch) => {
+    for (const v of filterVideoBatch(batch, filterOpts)) {
+      if (!seen.has(v.id)) {
+        seen.add(v.id);
+        collected.push(v);
+      }
+    }
+  };
+  pushFiltered(initialVideos);
+
+  let continuation = meta.continuation;
+  const maxExtraPages = targetCount >= 100 ? 7 : targetCount >= 50 ? 4 : 0;
+  for (let p = 0; p < maxExtraPages && collected.length < targetCount && continuation && meta.apiKey; p++) {
+    try {
+      const next = await fetchYouTubeContinuation({
+        apiKey: meta.apiKey,
+        clientVersion: meta.clientVersion,
+        continuation,
+      });
+      pushFiltered(next.videos);
+      continuation = next.continuation;
+    } catch {
+      break;
+    }
+  }
+  return { videos: collected.slice(0, targetCount), continuation };
 }
 
 const RAW_PREFIXES = ['IMG_', 'DSC_', 'MVI_', 'MOV_', 'VID_', '100_', 'CLIP', 'PICT'];
@@ -249,6 +366,9 @@ const server = http.createServer(async (req, res) => {
       const era = reqUrl.searchParams.get('era') || 'any';
       const maxViews = Number(reqUrl.searchParams.get('maxViews') || 0);
       const hideShorts = reqUrl.searchParams.get('hideShorts') !== 'false';
+      const limitRaw = reqUrl.searchParams.get('limit') || '20';
+      const isDoom = limitRaw === 'doom';
+      const targetCount = isDoom ? 20 : Math.min(100, Math.max(20, Number(limitRaw) || 20));
 
       if (!q) {
         sendJson(res, 400, { error: 'Missing query parameter' });
@@ -257,6 +377,7 @@ const server = http.createServer(async (req, res) => {
 
       let videos = [];
       let sourceUrl = '';
+      let pageMeta = { continuation: '', apiKey: '', clientVersion: '' };
 
       const mergeUnique = (lists) => {
         const seen = new Set();
@@ -282,11 +403,16 @@ const server = http.createServer(async (req, res) => {
         const tagUrl = `https://www.youtube.com/hashtag/${encodeURIComponent(cleanTag)}`;
         const searchUrl = buildSearchUrl(`#${cleanTag}`, { sort: 'relevance', duration: 'any' });
         sourceUrl = tagUrl;
-        const [tagVids, searchVids] = await Promise.all([
-          fetchYouTubePage(tagUrl).catch(() => []),
-          fetchYouTubePage(searchUrl).catch(() => []),
+        const [tagRes, searchRes] = await Promise.all([
+          fetchYouTubePage(tagUrl).catch(() => ({ videos: [] })),
+          fetchYouTubePage(searchUrl).catch(() => ({ videos: [], continuation: '', apiKey: '', clientVersion: '' })),
         ]);
-        videos = mergeUnique([tagVids, searchVids]);
+        videos = mergeUnique([tagRes.videos, searchRes.videos]);
+        pageMeta = {
+          continuation: searchRes.continuation || '',
+          apiKey: searchRes.apiKey || '',
+          clientVersion: searchRes.clientVersion || '',
+        };
       } else {
         let effectiveQuery = mode === 'hashtag' ? `#${q.replace(/^#/, '')}` : q;
         let uploaded = 'any';
@@ -318,51 +444,132 @@ const server = http.createServer(async (req, res) => {
           } else {
             urls.push(buildSearchUrl(effectiveQuery, { sort: 'date', duration, uploaded: 'any' }));
           }
-          const batches = await Promise.all(urls.map((u) => fetchYouTubePage(u).catch(() => [])));
-          videos = mergeUnique(batches);
+          const batches = await Promise.all(urls.map((u) => fetchYouTubePage(u).catch(() => ({ videos: [] }))));
+          videos = mergeUnique(batches.map((b) => b.videos));
+          pageMeta = {
+            continuation: batches[0]?.continuation || '',
+            apiKey: batches[0]?.apiKey || '',
+            clientVersion: batches[0]?.clientVersion || '',
+          };
         } else {
-          videos = await fetchYouTubePage(sourceUrl);
+          const pageRes = await fetchYouTubePage(sourceUrl);
+          videos = pageRes.videos;
+          pageMeta = {
+            continuation: pageRes.continuation || '',
+            apiKey: pageRes.apiKey || '',
+            clientVersion: pageRes.clientVersion || '',
+          };
         }
       }
 
-      if (hideShorts) {
-        videos = videos.filter((v) => !v.isShort);
-      }
-      if (maxViews > 0) {
-        videos = videos.filter((v) => v.viewCount !== null && v.viewCount <= maxViews);
-      }
+      const paged = await collectMoreWithContinuations(
+        videos,
+        pageMeta,
+        targetCount,
+        { hideShorts, maxViews }
+      );
+      const cursor = isDoom
+        ? saveCursor({
+            apiKey: pageMeta.apiKey,
+            clientVersion: pageMeta.clientVersion,
+            continuation: paged.continuation,
+            hideShorts,
+            maxViews,
+          })
+        : null;
 
       sendJson(res, 200, {
         query: q,
         mode,
-        count: videos.length,
+        count: paged.videos.length,
         sourceUrl,
-        videos,
+        videos: paged.videos,
+        cursor,
+        hasMore: Boolean(cursor),
+      });
+      return;
+    }
+
+    if (reqUrl.pathname === '/api/nextpage') {
+      const cursorId = reqUrl.searchParams.get('cursor') || '';
+      const entry = takeCursor(cursorId);
+      if (!entry) {
+        sendJson(res, 200, { videos: [], cursor: null, hasMore: false });
+        return;
+      }
+      const next = await fetchYouTubeContinuation({
+        apiKey: entry.apiKey,
+        clientVersion: entry.clientVersion,
+        continuation: entry.continuation,
+      });
+      const filtered = filterVideoBatch(next.videos, {
+        hideShorts: entry.hideShorts,
+        maxViews: entry.maxViews,
+      });
+      const nextCursor = saveCursor({
+        apiKey: entry.apiKey,
+        clientVersion: entry.clientVersion,
+        continuation: next.continuation,
+        hideShorts: entry.hideShorts,
+        maxViews: entry.maxViews,
+      });
+      sendJson(res, 200, {
+        videos: filtered,
+        cursor: nextCursor,
+        hasMore: Boolean(nextCursor),
       });
       return;
     }
 
     if (reqUrl.pathname === '/api/roulette') {
       const hideShorts = reqUrl.searchParams.get('hideShorts') !== 'false';
-      // Try up to 3 random raw camera filenames until we get real results
+      const limitRaw = reqUrl.searchParams.get('limit') || '20';
+      const isDoom = limitRaw === 'doom';
+      const targetCount = isDoom ? 20 : Math.min(100, Math.max(20, Number(limitRaw) || 20));
+      const seen = new Set();
       let query = '';
-      let videos = [];
-      for (let i = 0; i < 3; i++) {
-        query = randomRawQuery();
+      let collected = [];
+      let lastMeta = { continuation: '', apiKey: '', clientVersion: '' };
+
+      const maxRolls = targetCount > 20 ? 6 : 3;
+      for (let i = 0; i < maxRolls && collected.length < targetCount; i++) {
+        const candidateQuery = randomRawQuery();
         const sp = buildSpParam({ sort: 'relevance', duration: 'any' });
-        const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(`"${query}"`)}&sp=${encodeURIComponent(sp)}`;
-        const found = await fetchYouTubePage(url).catch(() => []);
-        const filtered = hideShorts ? found.filter((v) => !v.isShort) : found;
-        if (filtered.length >= 3) {
-          videos = filtered;
-          break;
+        const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(`"${candidateQuery}"`)}&sp=${encodeURIComponent(sp)}`;
+        const pageRes = await fetchYouTubePage(url).catch(() => ({ videos: [] }));
+        const filtered = filterVideoBatch(pageRes.videos, { hideShorts, maxViews: 0 });
+        if (filtered.length >= 3 || i === 2) {
+          query = candidateQuery;
+          for (const v of filtered) {
+            if (!seen.has(v.id)) {
+              seen.add(v.id);
+              collected.push(v);
+            }
+          }
+          lastMeta = {
+            continuation: pageRes.continuation || '',
+            apiKey: pageRes.apiKey || '',
+            clientVersion: pageRes.clientVersion || '',
+          };
+          if (targetCount === 20 && collected.length >= 3) break;
         }
       }
+      const cursor = isDoom
+        ? saveCursor({
+            apiKey: lastMeta.apiKey,
+            clientVersion: lastMeta.clientVersion,
+            continuation: lastMeta.continuation,
+            hideShorts,
+            maxViews: 0,
+          })
+        : null;
       sendJson(res, 200, {
         query,
         mode: 'roulette',
-        count: videos.length,
-        videos,
+        count: Math.min(collected.length, targetCount),
+        videos: collected.slice(0, targetCount),
+        cursor,
+        hasMore: Boolean(cursor),
       });
       return;
     }
