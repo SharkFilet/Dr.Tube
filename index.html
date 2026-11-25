@@ -523,11 +523,6 @@
       border-radius: var(--radius);
     }
 
-    .card--deferred {
-      content-visibility: auto;
-      contain-intrinsic-size: auto none auto 285px;
-    }
-
     .doom-sentinel {
       margin-top: 24px;
       padding: 16px;
@@ -2294,9 +2289,9 @@
         .replaceAll("'", '&#39;');
     }
 
-    function createVideoCard(v, idx) {
+    function createVideoCard(v) {
       const card = document.createElement('article');
-      card.className = idx >= 12 ? 'card card--deferred' : 'card';
+      card.className = 'card';
 
       const thumbBtn = document.createElement('button');
       thumbBtn.type = 'button';
@@ -2358,23 +2353,22 @@
 
       els.videoGrid.innerHTML = '';
       const frag = document.createDocumentFragment();
-      videos.forEach((v, idx) => {
+      videos.forEach((v) => {
         state.seenIds.add(v.id);
-        frag.appendChild(createVideoCard(v, idx));
+        frag.appendChild(createVideoCard(v));
       });
       els.videoGrid.appendChild(frag);
     }
 
     function appendGridBatch(newVideos) {
       if (!newVideos.length) return;
-      const startIdx = state.videos.length;
       const frag = document.createDocumentFragment();
       let added = 0;
       for (const v of newVideos) {
         if (!v || !v.id || state.seenIds.has(v.id)) continue;
         state.seenIds.add(v.id);
         state.videos.push(v);
-        frag.appendChild(createVideoCard(v, startIdx + added));
+        frag.appendChild(createVideoCard(v));
         added++;
       }
       if (added) els.videoGrid.appendChild(frag);
